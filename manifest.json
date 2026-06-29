@@ -1,21 +1,22 @@
-{
+﻿{
   "name": "AVIS Flotta — Provinciale Brescia",
   "short_name": "AVIS Flotta",
   "description": "Gestione flotta veicoli AVIS Provinciale Brescia",
-  "start_url": "/",
+  "start_url": "/avis-flotta/",
+  "scope": "/avis-flotta/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#C8102E",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "icons/icon-192.png",
+      "src": "/avis-flotta/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "/avis-flotta/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -27,14 +28,12 @@
     {
       "name": "Nuovo rifornimento",
       "short_name": "Rifornimento",
-      "url": "/?action=rifornimento",
-      "description": "Registra un rifornimento"
+      "url": "/avis-flotta/?action=rifornimento"
     },
     {
       "name": "Nuova segnalazione",
       "short_name": "Segnalazione",
-      "url": "/?action=segnalazione",
-      "description": "Apri una segnalazione guasto"
+      "url": "/avis-flotta/?action=segnalazione"
     }
   ]
 }
