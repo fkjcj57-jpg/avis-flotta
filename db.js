@@ -273,3 +273,13 @@ async function caricaDatiDemo() {
 
   console.log('[DB] Dati demo caricati');
 }
+
+/* ── Esponi tutto su window così app.js li trova ── */
+window.Veicoli       = Veicoli;
+window.Rifornimenti  = Rifornimenti;
+window.Manutenzioni  = Manutenzioni;
+window.Segnalazioni  = Segnalazioni;
+window.Scadenze      = Scadenze;
+window.DataIO        = DataIO;
+window.caricaDatiDemo = caricaDatiDemo;
+window.avviaSync     = avviaSync;
