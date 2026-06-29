@@ -622,12 +622,14 @@ async function eseguiLogin() {
     return;
   }
 
-  // Feedback visivo durante il login
+  // Feedback visivo solo se i campi sono compilati e Firebase è pronto
   if (btnLogin) { btnLogin.textContent = 'Accesso in corso...'; btnLogin.disabled = true; }
 
   try {
     await Auth.login(email, password);
-    // Auth._aggiornaUI() viene chiamato automaticamente da onAuthStateChanged
+    // Auth._aggiornaUI() gestisce mostrare login o app
+    // Il pulsante torna normale quando appare la schermata login al prossimo logout
+    if (btnLogin) { btnLogin.innerHTML = '<i class="ti ti-login"></i> Accedi'; btnLogin.disabled = false; }
   } catch (err) {
     testoEl.textContent = 'Email o password errati';
     errEl.classList.remove('hidden');
