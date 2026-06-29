@@ -59,6 +59,7 @@ async function renderPagina(pagina) {
     case 'rifornimenti':  return renderRifornimenti();
     case 'manutenzioni':  return renderManutenzioni();
     case 'segnalazioni':  return renderSegnalazioni();
+    case 'utenti':        return renderUtenti();
   }
 }
 
@@ -424,6 +425,12 @@ async function openModalSegnalazione() {
   await popolaSelectVeicoli('sg-veicoloId');
   document.getElementById('form-segnalazione').reset();
   document.getElementById('sg-data').value = oggi();
+  // Precompila il nome con l'utente loggato
+  const nomeEl = document.getElementById('sg-segnalato');
+  if (nomeEl && window.Auth?.nomeUtente) {
+    nomeEl.value    = Auth.nomeUtente();
+    nomeEl.readOnly = true;
+  }
   openModal('modal-segnalazione');
 }
 
@@ -432,18 +439,50 @@ async function salvaSegnalazione() {
   const titolo = document.getElementById('sg-titolo').value.trim();
   if (!vId || !titolo) { showToast('Compila i campi obbligatori', 'danger'); return; }
 
+  const priorita    = document.getElementById('sg-priorita').value;
+  const descrizione = document.getElementById('sg-descrizione').value;
+  const segnalato   = document.getElementById('sg-segnalato').value;
+
   await Segnalazioni.add({
-    veicoloId:   vId,
-    priorita:    document.getElementById('sg-priorita').value,
+    veicoloId: vId,
+    priorita,
     titolo,
-    descrizione: document.getElementById('sg-descrizione').value,
-    segnalato:   document.getElementById('sg-segnalato').value,
-    data:        document.getElementById('sg-data').value,
+    descrizione,
+    segnalato,
+    data: document.getElementById('sg-data').value,
   });
 
   showToast('Segnalazione inviata', 'ok');
   closeModal('modal-segnalazione');
   renderPagina(State.paginaCorrente);
+
+  /* Notifica push locale */
+  const veicoli = await Veicoli.getAll();
+  const v = veicoli.find(x => x.id === vId);
+  inviaNotificaSegnalazione(titolo, descrizione, priorita, v);
+}
+
+/* ── Notifica locale per nuova segnalazione ── */
+async function inviaNotificaSegnalazione(titolo, descrizione, priorita, veicolo) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const icone = { alta: '🔴', media: '🟡', bassa: '🔵' };
+  const icona = icone[priorita] || '⚠️';
+  const targa = veicolo ? `${veicolo.targa} — ${veicolo.modello}` : '';
+
+  const reg = await navigator.serviceWorker.ready;
+  reg.showNotification(`${icona} Nuovo guasto: ${titolo}`, {
+    body:    [targa, descrizione].filter(Boolean).join('\n'),
+    icon:    '/icons/icon-192.png',
+    badge:   '/icons/icon-192.png',
+    tag:     'segnalazione-' + Date.now(),
+    vibrate: priorita === 'alta' ? [200, 100, 200, 100, 200] : [200],
+    data:    { url: '/?p=segnalazioni' },
+    actions: [
+      { action: 'apri',   title: 'Apri segnalazioni' },
+      { action: 'ignora', title: 'Ignora' }
+    ]
+  });
 }
 
 /* ── Aggiorna stato segnalazione ── */
@@ -499,7 +538,10 @@ function showToast(messaggio, tipo = 'ok') {
 async function inizializzaPWA() {
   if ('serviceWorker' in navigator) {
     try {
-      const reg = await navigator.serviceWorker.register('/sw.js');
+      const swPath = location.pathname.includes('/avis-flotta/') ? '/avis-flotta/sw.js' : '/sw.js';
+      const reg = await navigator.serviceWorker.register(swPath, {
+        scope: location.pathname.includes('/avis-flotta/') ? '/avis-flotta/' : '/'
+      });
       console.log('[SW] Registrato:', reg.scope);
 
       // Controllo aggiornamenti
@@ -511,11 +553,18 @@ async function inizializzaPWA() {
     }
   }
 
-  // Notifiche push
+  // Notifiche — mostra il pulsante se non ancora concesso,
+  // e chiedi automaticamente al primo avvio
   if ('Notification' in window) {
     const btn = document.getElementById('btn-notifiche');
-    if (btn) {
-      btn.style.display = Notification.permission === 'granted' ? 'none' : 'flex';
+    if (Notification.permission === 'granted') {
+      if (btn) btn.style.display = 'none';
+    } else if (Notification.permission === 'default') {
+      if (btn) btn.style.display = 'flex';
+      // Chiedi il permesso automaticamente dopo 3 secondi
+      setTimeout(() => {
+        if (Notification.permission === 'default') richiediNotifiche();
+      }, 3000);
     }
   }
 
@@ -551,7 +600,101 @@ async function installaApp() {
   }
 }
 
-/* ── Offline / online ── */
+/* ── Login / Logout ── */
+async function eseguiLogin() {
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl    = document.getElementById('login-errore');
+  const testoEl  = document.getElementById('login-errore-testo');
+
+  errEl.classList.add('hidden');
+  if (!email || !password) {
+    testoEl.textContent = 'Inserisci email e password';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  try {
+    await Auth.login(email, password);
+    // Auth._aggiornaUI() viene chiamato automaticamente da onAuthStateChanged
+  } catch (err) {
+    testoEl.textContent = 'Email o password errati';
+    errEl.classList.remove('hidden');
+  }
+}
+
+async function eseguiLogout() {
+  await Auth.logout();
+}
+
+/* ── Crea nuovo utente (responsabile) ── */
+async function creaUtente() {
+  const nome     = document.getElementById('u-nome').value.trim();
+  const email    = document.getElementById('u-email').value.trim();
+  const password = document.getElementById('u-password').value;
+  const ruolo    = document.getElementById('u-ruolo').value;
+
+  if (!nome || !email || !password) {
+    showToast('Compila tutti i campi', 'danger');
+    return;
+  }
+  if (password.length < 8) {
+    showToast('Password minimo 8 caratteri', 'danger');
+    return;
+  }
+
+  try {
+    await Auth.creaUtente(email, password, nome, ruolo);
+    showToast(`Account creato per ${nome}`, 'ok');
+    closeModal('modal-utente');
+    renderUtenti();
+  } catch (err) {
+    showToast('Errore: ' + (err.message || 'riprovare'), 'danger');
+  }
+}
+
+/* ── Render pagina Utenti ── */
+async function renderUtenti() {
+  if (!Auth.isResponsabile()) return;
+  const utenti = await Auth.listaUtenti();
+  const container = document.getElementById('utenti-list');
+
+  const etichette = { responsabile: 'tag-rosso', operatore: 'tag-blue', autista: 'tag-gray' };
+
+  container.innerHTML = utenti.length ? utenti.map(u => `
+    <div class="card">
+      <div class="flex gap-8 items-center">
+        <div style="width:40px;height:40px;border-radius:50%;background:var(--rosso-bg);color:var(--rosso);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:16px;flex-shrink:0">
+          ${(u.nome || 'U')[0].toUpperCase()}
+        </div>
+        <div class="flex-1">
+          <div class="font-medium">${u.nome}</div>
+          <div class="text-sm text-muted">${u.email}</div>
+        </div>
+        <span class="tag ${etichette[u.ruolo] || 'tag-gray'}">${u.ruolo}</span>
+        ${u.uid !== Auth.utente?.uid ? `
+          <button class="btn btn-secondary btn-sm" onclick="eliminaUtente('${u.uid}','${u.nome}')">
+            <i class="ti ti-trash"></i>
+          </button>` : ''}
+      </div>
+    </div>`).join('') :
+    `<div class="empty-state"><i class="ti ti-users"></i><h3>Nessun utente</h3><p>Crea il primo account.</p></div>`;
+}
+
+async function eliminaUtente(uid, nome) {
+  if (!confirm(`Eliminare l'account di ${nome}? L'utente non potrà più accedere.`)) return;
+  await Auth.eliminaUtente(uid);
+  showToast(`Account di ${nome} eliminato`, 'warn');
+  renderUtenti();
+}
+
+/* ── Supporto tasto Invio nel form login ── */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('schermata-login') &&
+      !document.getElementById('schermata-login').classList.contains('hidden')) {
+    eseguiLogin();
+  }
+});
 window.addEventListener('offline', () => {
   document.getElementById('offline-bar').classList.add('visible');
 });
@@ -569,6 +712,11 @@ async function init() {
 
   // Avvia sync Firebase in background (non blocca la UI)
   avviaSync().catch(err => console.warn('[Sync]', err));
+
+  // Inizializza autenticazione — mostra login o app
+  if (window.Auth) {
+    await Auth.init();
+  }
 
   await inizializzaPWA();
 

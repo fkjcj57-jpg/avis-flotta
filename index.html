@@ -24,7 +24,36 @@
 </head>
 <body>
 
-<div id="app">
+<!-- ── Schermata Login ── -->
+<div id="schermata-login">
+  <div class="login-card">
+    <div class="login-logo">A</div>
+    <h1 class="login-titolo">AVIS Flotta</h1>
+    <p class="login-sub">Provinciale Brescia</p>
+
+    <div id="login-errore" class="alert alert-danger hidden" style="margin-bottom:12px">
+      <i class="ti ti-alert-circle"></i>
+      <span id="login-errore-testo">Email o password errati</span>
+    </div>
+
+    <div class="form-group">
+      <label for="login-email">Email</label>
+      <input type="email" id="login-email" placeholder="nome@avis-brescia.it" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label for="login-password">Password</label>
+      <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px" onclick="eseguiLogin()">
+      <i class="ti ti-login"></i> Accedi
+    </button>
+    <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:16px">
+      Gli account vengono creati dal responsabile flotta
+    </p>
+  </div>
+</div>
+
+<div id="app" class="hidden">
 
   <!-- ── Topbar ── -->
   <header id="topbar">
@@ -34,6 +63,10 @@
       <p>Provinciale Brescia</p>
     </div>
     <div class="topbar-actions">
+      <div style="text-align:right;margin-right:4px">
+        <div style="font-size:13px;font-weight:500;color:#fff" id="topbar-nome"></div>
+        <div style="font-size:11px;opacity:0.75;color:#fff" id="topbar-ruolo"></div>
+      </div>
       <button class="notif-btn" onclick="richiediNotifiche()" id="btn-notifiche"
               title="Attiva notifiche" style="display:none" aria-label="Attiva notifiche">
         <i class="ti ti-bell"></i>
@@ -41,6 +74,9 @@
       </button>
       <button class="notif-btn" onclick="DataIO.esportaJSON()" title="Esporta dati" aria-label="Esporta backup">
         <i class="ti ti-download"></i>
+      </button>
+      <button class="notif-btn" onclick="eseguiLogout()" title="Esci" aria-label="Logout">
+        <i class="ti ti-logout"></i>
       </button>
     </div>
   </header>
@@ -78,6 +114,10 @@
     <button class="nav-item" data-page="segnalazioni" onclick="navigate('segnalazioni')" aria-label="Segnalazioni">
       <span class="nav-icon"><i class="ti ti-alert-triangle" aria-hidden="true"></i></span>
       <span>Guasti</span>
+    </button>
+    <button class="nav-item hidden" data-page="utenti" data-ruolo="responsabile" onclick="navigate('utenti')" aria-label="Utenti">
+      <span class="nav-icon"><i class="ti ti-users" aria-hidden="true"></i></span>
+      <span>Utenti</span>
     </button>
   </nav>
 
@@ -183,6 +223,17 @@
         <button class="chip" onclick="setFiltro('segnalazioni','chiusa',this)">Chiuse</button>
       </div>
       <div id="segn-list"></div>
+    </div>
+
+    <!-- UTENTI (solo responsabile) -->
+    <div class="page" id="page-utenti" data-ruolo="responsabile">
+      <div class="section-header">
+        <h2 class="section-title">Gestione utenti</h2>
+        <button class="btn-add" onclick="openModal('modal-utente')">
+          <i class="ti ti-plus"></i> Nuovo utente
+        </button>
+      </div>
+      <div id="utenti-list"></div>
     </div>
 
   </main>
@@ -340,7 +391,35 @@
   </div>
 </div>
 
+<!-- ── MODALE: Nuovo utente ── -->
+<div class="modal-overlay" id="modal-utente" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2 class="modal-title">Nuovo utente</h2>
+      <button class="close-btn" onclick="closeModal('modal-utente')" aria-label="Chiudi"><i class="ti ti-x"></i></button>
+    </div>
+    <form id="form-utente" onsubmit="return false">
+      <div class="form-group"><label for="u-nome">Nome completo</label><input type="text" id="u-nome" placeholder="Es. Marco Rossi"></div>
+      <div class="form-group"><label for="u-email">Email</label><input type="email" id="u-email" placeholder="marco@avis-brescia.it"></div>
+      <div class="form-group"><label for="u-password">Password temporanea</label><input type="password" id="u-password" placeholder="Min. 8 caratteri"></div>
+      <div class="form-group"><label for="u-ruolo">Ruolo</label>
+        <select id="u-ruolo">
+          <option value="autista">Autista — solo segnalazioni guasto</option>
+          <option value="operatore">Operatore — manutenzioni, rifornimenti, guasti</option>
+          <option value="responsabile">Responsabile — accesso completo</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="creaUtente()"><i class="ti ti-user-plus"></i> Crea account</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-utente')">Annulla</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script src="firebase.js"></script>
+<script src="auth.js"></script>
 <script src="db.js"></script>
 <script src="app.js"></script>
 <script>
