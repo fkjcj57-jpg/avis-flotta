@@ -51,11 +51,13 @@ Puoi generarle su [realfavicongenerator.net](https://realfavicongenerator.net) p
 
 #### Opzione A — GitHub Pages (gratuito, consigliato)
 
+GitHub Pages è **completamente gratuito** per repository pubblici con qualsiasi account GitHub Free — nessuna carta di credito richiesta. Il codice sorgente (i file HTML/JS/CSS) sarà visibile pubblicamente, ma i dati della flotta rimangono sul dispositivo di chi usa l'app (IndexedDB locale). Se vuoi tenere il codice privato, servono i piani a pagamento GitHub Pro/Team.
+
 1. Crea un account su [github.com](https://github.com) se non ce l'hai
-2. Crea un nuovo repository (es. `avis-flotta`)
+2. Crea un nuovo repository **pubblico** (es. `avis-flotta`)
 3. Carica tutti i file della cartella `avis-flotta-pwa/`
 4. Vai in Settings → Pages → Source: "main branch"
-5. L'app sarà disponibile su `https://tuonome.github.io/avis-flotta/`
+5. L'URL esatto lo trovi in Settings → Pages, mostrato in verde sotto "Your site is live at". Il formato è `https://<tuonomeutente>.github.io/<nomerepo>/` — sostituisci con il tuo nome utente GitHub e il nome che hai dato al repository
 
 **Importante:** il Service Worker richiede HTTPS — GitHub Pages lo fornisce automaticamente.
 
@@ -126,6 +128,81 @@ Quando aggiorni i file sul server, il Service Worker aggiorna automaticamente
 la cache. Gli utenti vedono un toast "Aggiornamento disponibile — ricarica".
 Per forzare l'aggiornamento immediato, modifica `CACHE_NAME` in `sw.js`
 (es. `avis-flotta-v2`).
+
+---
+
+## Sincronizzazione multi-device con Firebase
+
+Per condividere i dati tra PC e smartphone segui questi passaggi — tutto gratuito con il piano Spark di Firebase.
+
+### 1. Crea il progetto Firebase
+
+1. Vai su [console.firebase.google.com](https://console.firebase.google.com)
+2. Clicca **Aggiungi progetto** → dai un nome (es. `avis-flotta-bs`) → continua
+3. Disabilita Google Analytics (non serve) → **Crea progetto**
+
+### 2. Attiva Firestore
+
+1. Nel menu laterale: **Firestore Database** → **Crea database**
+2. Scegli **Inizia in modalità produzione**
+3. Seleziona la regione `europe-west6` (Zurigo, la più vicina)
+4. Clicca **Avanti** → **Fine**
+
+### 3. Configura le regole di sicurezza Firestore
+
+Nel pannello Firestore → tab **Regole**, sostituisci tutto con:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+Clicca **Pubblica**. (In futuro puoi aggiungere Firebase Auth per limitare l'accesso ai soli utenti AVIS.)
+
+### 4. Ottieni le credenziali
+
+1. Vai in **Impostazioni progetto** (icona ingranaggio in alto a sinistra)
+2. Scorri fino a **Le tue app** → clicca l'icona `</>` (Web)
+3. Dai un soprannome (es. `AVIS Flotta PWA`) → **Registra app**
+4. Copia l'oggetto `firebaseConfig` che appare
+
+### 5. Incolla la configurazione in `firebase.js`
+
+Apri `firebase.js` e sostituisci il blocco `firebaseConfig` con i valori copiati:
+
+```javascript
+const firebaseConfig = {
+  apiKey:            "AIzaSy...",
+  authDomain:        "avis-flotta-bs.firebaseapp.com",
+  projectId:         "avis-flotta-bs",
+  storageBucket:     "avis-flotta-bs.appspot.com",
+  messagingSenderId: "123456789",
+  appId:             "1:123456789:web:abc123"
+};
+```
+
+### 6. Carica i file aggiornati su GitHub
+
+Carica `firebase.js`, `db.js` e `index.html` aggiornati nel repository. Al prossimo caricamento:
+- I dati locali esistenti vengono caricati su Firestore automaticamente (una sola volta)
+- I listener real-time si attivano: qualsiasi modifica su un dispositivo appare subito sugli altri
+
+### Limiti piano gratuito Firebase (Spark)
+
+| Risorsa | Limite gratuito | Stima AVIS |
+|---------|----------------|-----------|
+| Letture/giorno | 50.000 | ~500 — ampiamente sotto |
+| Scritture/giorno | 20.000 | ~100 — ampiamente sotto |
+| Storage | 1 GB | < 1 MB |
+| Banda | 10 GB/mese | trascurabile |
+
+Il piano gratuito è più che sufficiente per una flotta di 10–20 veicoli.
 
 ---
 

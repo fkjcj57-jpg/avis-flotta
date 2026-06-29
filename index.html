@@ -340,13 +340,40 @@
   </div>
 </div>
 
-<script src="db.js"></script>
+<script type="module">
+  import { avviaSync, setOnRemoteUpdate, Veicoli, Rifornimenti, Manutenzioni, Segnalazioni, Scadenze, DataIO, caricaDatiDemo } from './db.js';
+
+  /* Rendi disponibili globalmente per app.js (script non-module) */
+  window.Veicoli       = Veicoli;
+  window.Rifornimenti  = Rifornimenti;
+  window.Manutenzioni  = Manutenzioni;
+  window.Segnalazioni  = Segnalazioni;
+  window.Scadenze      = Scadenze;
+  window.DataIO        = DataIO;
+  window.caricaDatiDemo = caricaDatiDemo;
+
+  /* Quando arriva un aggiornamento remoto, ri-renderizza la pagina corrente */
+  setOnRemoteUpdate((collezione) => {
+    if (window.State && window.renderPagina) {
+      window.renderPagina(window.State.paginaCorrente);
+    }
+  });
+
+  /* Avvia la sincronizzazione Firebase (non-bloccante) */
+  avviaSync().then(ok => {
+    if (ok) {
+      const ind = document.getElementById('sync-indicator');
+      if (ind) { ind.textContent = '☁ Sync attiva'; ind.style.color = 'var(--ok)'; }
+    }
+  });
+</script>
+
 <script src="app.js"></script>
+
 <script>
-/* FAB contestuale per pagina */
 function apriFAB() {
   const azioni = {
-    dashboard:    () => { /* mostra menu rapido */ },
+    dashboard:    () => {},
     veicoli:      () => openModalVeicolo(),
     rifornimenti: () => openModalRifornimento(),
     manutenzioni: () => openModalManutenzione(),
@@ -355,11 +382,9 @@ function apriFAB() {
   (azioni[State.paginaCorrente] || azioni.veicoli)();
 }
 
-/* Aggiorna azione FAB a ogni navigazione */
 const origNavigate = navigate;
 window.navigate = function(pagina) {
   origNavigate(pagina);
-  // Mostra i btn-add su desktop
   document.querySelectorAll('.btn-add').forEach(b => b.classList.remove('hidden'));
 };
 </script>

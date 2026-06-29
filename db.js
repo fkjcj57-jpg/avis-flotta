@@ -1,10 +1,18 @@
 /* ═══════════════════════════════════════════════════
    AVIS Flotta — db.js
-   Livello dati: IndexedDB con Dexie.js (CDN)
-   Tutte le operazioni CRUD sui 5 object store
+   Livello dati: IndexedDB (Dexie.js) + Firebase sync
    ═══════════════════════════════════════════════════ */
 
-/* Inizializzazione Dexie */
+import {
+  inizializzaFirebase,
+  isSyncAttivo,
+  syncRecord,
+  deleteRecord,
+  startListener,
+  uploadIniziale,
+} from './firebase.js';
+
+/* ── IndexedDB locale ── */
 const db = new Dexie('AvisFlottaDB');
 
 db.version(1).stores({
@@ -14,6 +22,31 @@ db.version(1).stores({
   segnalazioni:  '++id, veicoloId, stato, priorita, data',
   scadenze:      '++id, veicoloId, tipo, dataScadenza'
 });
+
+/* ── Callback per aggiornare la UI quando arriva un aggiornamento remoto ── */
+let onRemoteUpdate = () => {};
+export function setOnRemoteUpdate(fn) { onRemoteUpdate = fn; }
+
+/* ── Avvio sincronizzazione ── */
+export async function avviaSync() {
+  const connesso = await inizializzaFirebase();
+  if (!connesso) return;
+
+  /* Carica su Firestore i dati locali esistenti (solo al primo collegamento) */
+  const flagKey = 'avis_upload_fatto';
+  if (!localStorage.getItem(flagKey)) {
+    await uploadIniziale({ veicoli: db.veicoli, rifornimenti: db.rifornimenti, manutenzioni: db.manutenzioni, segnalazioni: db.segnalazioni });
+    localStorage.setItem(flagKey, '1');
+  }
+
+  /* Ascolta i cambiamenti in tempo reale per ogni collezione */
+  startListener('veicoli',      db.veicoli,      () => onRemoteUpdate('veicoli'));
+  startListener('rifornimenti', db.rifornimenti, () => onRemoteUpdate('rifornimenti'));
+  startListener('manutenzioni', db.manutenzioni, () => onRemoteUpdate('manutenzioni'));
+  startListener('segnalazioni', db.segnalazioni, () => onRemoteUpdate('segnalazioni'));
+
+  console.log('[DB] Listener real-time attivi su tutte le collezioni');
+}
 
 /* ────────── VEICOLI ────────── */
 const Veicoli = {
@@ -26,12 +59,10 @@ const Veicoli = {
   },
 
   async add(veicolo) {
-    const id = await db.veicoli.add({
-      ...veicolo,
-      dataCreazione: new Date().toISOString(),
-      stato: 'attivo'
-    });
+    const record = { ...veicolo, dataCreazione: new Date().toISOString(), stato: 'attivo' };
+    const id = await db.veicoli.add(record);
     await Scadenze.rigenera(id, veicolo);
+    await syncRecord('veicoli', { ...record, id });
     return id;
   },
 
@@ -39,6 +70,7 @@ const Veicoli = {
     await db.veicoli.update(id, dati);
     const v = await db.veicoli.get(id);
     await Scadenze.rigenera(id, v);
+    await syncRecord('veicoli', v);
   },
 
   async elimina(id) {
@@ -49,6 +81,7 @@ const Veicoli = {
       await db.segnalazioni.where('veicoloId').equals(id).delete();
       await db.scadenze.where('veicoloId').equals(id).delete();
     });
+    await deleteRecord('veicoli', id);
   },
 
   async getConScadenze() {
@@ -56,9 +89,9 @@ const Veicoli = {
     const oggi = new Date();
     return veicoli.map(v => ({
       ...v,
-      giorniTagliando:  v.tagliandoData  ? Math.round((new Date(v.tagliandoData) - oggi) / 86400000) : 999,
-      giorniBollo:      v.bolloScadenza  ? Math.round((new Date(v.bolloScadenza) - oggi) / 86400000) : 999,
-      giorniRevisione:  v.revisioneData  ? Math.round((new Date(v.revisioneData) - oggi) / 86400000) : 999,
+      giorniTagliando: v.tagliandoData ? Math.round((new Date(v.tagliandoData) - oggi) / 86400000) : 999,
+      giorniBollo:     v.bolloScadenza ? Math.round((new Date(v.bolloScadenza) - oggi) / 86400000) : 999,
+      giorniRevisione: v.revisioneData ? Math.round((new Date(v.revisioneData) - oggi) / 86400000) : 999,
     })).map(v => ({
       ...v,
       statoScadenze: Math.min(v.giorniTagliando, v.giorniBollo, v.giorniRevisione) < 0 ? 'scaduto'
@@ -79,20 +112,20 @@ const Rifornimenti = {
   },
 
   async add(dati) {
-    const id = await db.rifornimenti.add({
-      ...dati,
-      dataCreazione: new Date().toISOString()
-    });
-    // Aggiorna km veicolo se maggiori
+    const record = { ...dati, dataCreazione: new Date().toISOString() };
+    const id = await db.rifornimenti.add(record);
     const v = await db.veicoli.get(dati.veicoloId);
     if (v && dati.km > (v.kmAttuali || 0)) {
       await db.veicoli.update(dati.veicoloId, { kmAttuali: dati.km });
+      await syncRecord('veicoli', { ...v, kmAttuali: dati.km });
     }
+    await syncRecord('rifornimenti', { ...record, id });
     return id;
   },
 
   async elimina(id) {
-    return db.rifornimenti.delete(id);
+    await db.rifornimenti.delete(id);
+    await deleteRecord('rifornimenti', id);
   },
 
   async statistiche(mesi = 12) {
@@ -119,23 +152,24 @@ const Manutenzioni = {
   },
 
   async add(dati) {
-    const id = await db.manutenzioni.add({
-      ...dati,
-      dataCreazione: new Date().toISOString()
-    });
-    // Se è un tagliando, aggiorna la data sul veicolo
+    const record = { ...dati, dataCreazione: new Date().toISOString() };
+    const id = await db.manutenzioni.add(record);
     if (dati.tipo === 'ordinaria' && dati.prossimoIntervento) {
       await db.veicoli.update(dati.veicoloId, {
         tagliandoData: dati.prossimoIntervento,
         tagliandoKm: dati.prossimoKm || undefined
       });
-      await Scadenze.rigenera(dati.veicoloId, await db.veicoli.get(dati.veicoloId));
+      const v = await db.veicoli.get(dati.veicoloId);
+      await Scadenze.rigenera(dati.veicoloId, v);
+      await syncRecord('veicoli', v);
     }
+    await syncRecord('manutenzioni', { ...record, id });
     return id;
   },
 
   async elimina(id) {
-    return db.manutenzioni.delete(id);
+    await db.manutenzioni.delete(id);
+    await deleteRecord('manutenzioni', id);
   },
 
   async statistiche() {
@@ -160,41 +194,40 @@ const Segnalazioni = {
   },
 
   async add(dati) {
-    return db.segnalazioni.add({
-      ...dati,
-      stato: 'aperta',
-      dataCreazione: new Date().toISOString()
-    });
+    const record = { ...dati, stato: 'aperta', dataCreazione: new Date().toISOString() };
+    const id = await db.segnalazioni.add(record);
+    await syncRecord('segnalazioni', { ...record, id });
+    return id;
   },
 
   async aggiornaSato(id, stato) {
-    return db.segnalazioni.update(id, {
-      stato,
-      dataAggiornamento: new Date().toISOString()
-    });
+    const aggiornamento = { stato, dataAggiornamento: new Date().toISOString() };
+    await db.segnalazioni.update(id, aggiornamento);
+    const s = await db.segnalazioni.get(id);
+    await syncRecord('segnalazioni', s);
   },
 
   async elimina(id) {
-    return db.segnalazioni.delete(id);
+    await db.segnalazioni.delete(id);
+    await deleteRecord('segnalazioni', id);
   }
 };
 
-/* ────────── SCADENZE ────────── */
+/* ────────── SCADENZE (solo locale, derivate dai veicoli) ────────── */
 const Scadenze = {
   async rigenera(veicoloId, veicolo) {
     await db.scadenze.where('veicoloId').equals(veicoloId).delete();
     const scad = [];
-    if (veicolo.tagliandoData) scad.push({ veicoloId, tipo: 'tagliando',  dataScadenza: veicolo.tagliandoData,  descrizione: 'Tagliando' });
-    if (veicolo.bolloScadenza)  scad.push({ veicoloId, tipo: 'bollo',      dataScadenza: veicolo.bolloScadenza,  descrizione: 'Bollo auto' });
-    if (veicolo.revisioneData)  scad.push({ veicoloId, tipo: 'revisione',  dataScadenza: veicolo.revisioneData,  descrizione: 'Revisione periodica' });
-    if (veicolo.assicurazione)  scad.push({ veicoloId, tipo: 'assicurazione', dataScadenza: veicolo.assicurazione, descrizione: 'Assicurazione RCA' });
+    if (veicolo.tagliandoData) scad.push({ veicoloId, tipo: 'tagliando',     dataScadenza: veicolo.tagliandoData,  descrizione: 'Tagliando' });
+    if (veicolo.bolloScadenza)  scad.push({ veicoloId, tipo: 'bollo',         dataScadenza: veicolo.bolloScadenza,  descrizione: 'Bollo auto' });
+    if (veicolo.revisioneData)  scad.push({ veicoloId, tipo: 'revisione',     dataScadenza: veicolo.revisioneData,  descrizione: 'Revisione periodica' });
+    if (veicolo.assicurazione)  scad.push({ veicoloId, tipo: 'assicurazione', dataScadenza: veicolo.assicurazione,  descrizione: 'Assicurazione RCA' });
     await db.scadenze.bulkAdd(scad);
   },
 
   async prossime(giorni = 60) {
     const limite = new Date();
     limite.setDate(limite.getDate() + giorni);
-    const oggi = new Date().toISOString().split('T')[0];
     const tutte = await db.scadenze
       .where('dataScadenza').belowOrEqual(limite.toISOString().split('T')[0])
       .toArray();
@@ -236,16 +269,18 @@ const DataIO = {
       await db.manutenzioni.clear();
       await db.segnalazioni.clear();
       await db.scadenze.clear();
-
       await db.veicoli.bulkAdd(dati.veicoli);
       await db.rifornimenti.bulkAdd(dati.rifornimenti || []);
       await db.manutenzioni.bulkAdd(dati.manutenzioni || []);
       await db.segnalazioni.bulkAdd(dati.segnalazioni || []);
-
       for (const v of dati.veicoli) {
         await Scadenze.rigenera(v.id, v);
       }
     });
+
+    if (isSyncAttivo()) {
+      await uploadIniziale({ veicoli: db.veicoli, rifornimenti: db.rifornimenti, manutenzioni: db.manutenzioni, segnalazioni: db.segnalazioni });
+    }
   }
 };
 
@@ -258,11 +293,11 @@ async function caricaDatiDemo() {
   const fra = (g) => { const d = new Date(oggi); d.setDate(d.getDate() + g); return d.toISOString().split('T')[0]; };
 
   const veicoli = [
-    { targa: 'BS 451 DH', modello: 'Fiat Doblò',      anno: 2020, kmAttuali: 87400, carburante: 'Diesel', sede: 'Brescia',         tagliandoData: fra(-30),  bolloScadenza: fra(185), revisioneData: fra(200), stato: 'attivo' },
-    { targa: 'BS 312 KL', modello: 'Ford Transit',     anno: 2019, kmAttuali: 112300, carburante: 'Diesel', sede: 'Cunettone Salò',  tagliandoData: fra(73),   bolloScadenza: fra(18),  revisioneData: fra(174), stato: 'attivo' },
-    { targa: 'BS 789 FP', modello: 'Renault Kangoo',   anno: 2021, kmAttuali: 54200,  carburante: 'Diesel', sede: 'Brescia',         tagliandoData: fra(144),  bolloScadenza: fra(397), revisioneData: fra(22),  stato: 'attivo' },
-    { targa: 'BS 221 MN', modello: 'VW Caddy',         anno: 2022, kmAttuali: 34100,  carburante: 'Diesel', sede: 'Mobile',          tagliandoData: fra(226),  bolloScadenza: fra(93),  revisioneData: fra(246), stato: 'attivo' },
-    { targa: 'BS 100 AX', modello: 'Fiat Fiorino',     anno: 2018, kmAttuali: 98700,  carburante: 'Benzina', sede: 'Brescia',        tagliandoData: fra(159),  bolloScadenza: fra(154), revisioneData: fra(226), stato: 'attivo' },
+    { targa: 'BS 451 DH', modello: 'Fiat Doblò',    anno: 2020, kmAttuali: 87400,  carburante: 'Diesel',  sede: 'Brescia',        tagliandoData: fra(-30), bolloScadenza: fra(185), revisioneData: fra(200), stato: 'attivo' },
+    { targa: 'BS 312 KL', modello: 'Ford Transit',   anno: 2019, kmAttuali: 112300, carburante: 'Diesel',  sede: 'Cunettone Salò', tagliandoData: fra(73),  bolloScadenza: fra(18),  revisioneData: fra(174), stato: 'attivo' },
+    { targa: 'BS 789 FP', modello: 'Renault Kangoo', anno: 2021, kmAttuali: 54200,  carburante: 'Diesel',  sede: 'Brescia',        tagliandoData: fra(144), bolloScadenza: fra(397), revisioneData: fra(22),  stato: 'attivo' },
+    { targa: 'BS 221 MN', modello: 'VW Caddy',       anno: 2022, kmAttuali: 34100,  carburante: 'Diesel',  sede: 'Mobile',         tagliandoData: fra(226), bolloScadenza: fra(93),  revisioneData: fra(246), stato: 'attivo' },
+    { targa: 'BS 100 AX', modello: 'Fiat Fiorino',   anno: 2018, kmAttuali: 98700,  carburante: 'Benzina', sede: 'Brescia',        tagliandoData: fra(159), bolloScadenza: fra(154), revisioneData: fra(226), stato: 'attivo' },
   ];
 
   for (const v of veicoli) {
@@ -271,19 +306,19 @@ async function caricaDatiDemo() {
   }
 
   await db.rifornimenti.bulkAdd([
-    { veicoloId: 4, data: fra(-2),  km: 34100, litri: 42,   costo: 72.24,  carburante: 'Diesel', distributore: 'Agip Brescia Nord', note: '', dataCreazione: new Date().toISOString() },
-    { veicoloId: 3, data: fra(-7),  km: 54200, litri: 35,   costo: 60.55,  carburante: 'Diesel', distributore: 'Eni Salò',          note: '', dataCreazione: new Date().toISOString() },
-    { veicoloId: 2, data: fra(-11), km: 112300, litri: 65,  costo: 112.40, carburante: 'Diesel', distributore: 'Q8 Brescia Est',    note: 'Autista: Marco', dataCreazione: new Date().toISOString() },
+    { veicoloId: 4, data: fra(-2),  km: 34100,  litri: 42, costo: 72.24,  carburante: 'Diesel', distributore: 'Agip Brescia Nord', note: '', dataCreazione: new Date().toISOString() },
+    { veicoloId: 3, data: fra(-7),  km: 54200,  litri: 35, costo: 60.55,  carburante: 'Diesel', distributore: 'Eni Salò',          note: '', dataCreazione: new Date().toISOString() },
+    { veicoloId: 2, data: fra(-11), km: 112300, litri: 65, costo: 112.40, carburante: 'Diesel', distributore: 'Q8 Brescia Est',    note: 'Autista: Marco', dataCreazione: new Date().toISOString() },
   ]);
 
   await db.manutenzioni.bulkAdd([
-    { veicoloId: 5, tipo: 'ordinaria',    data: fra(-4),  km: 98700,  descrizione: 'Cambio olio 5W30, filtro olio, filtro aria', officina: 'Officina Rossi BS', costo: 185, prossimoIntervento: fra(180), dataCreazione: new Date().toISOString() },
-    { veicoloId: 1, tipo: 'straordinaria', data: fra(-19), km: 87000, descrizione: 'Sostituzione ammortizzatori anteriori SX e DX', officina: 'Autofficina Bianchi BS', costo: 420, dataCreazione: new Date().toISOString() },
+    { veicoloId: 5, tipo: 'ordinaria',     data: fra(-4),  km: 98700, descrizione: 'Cambio olio 5W30, filtro olio, filtro aria',       officina: 'Officina Rossi BS',      costo: 185, prossimoIntervento: fra(180), dataCreazione: new Date().toISOString() },
+    { veicoloId: 1, tipo: 'straordinaria', data: fra(-19), km: 87000, descrizione: 'Sostituzione ammortizzatori anteriori SX e DX',    officina: 'Autofficina Bianchi BS', costo: 420, dataCreazione: new Date().toISOString() },
   ]);
 
   await db.segnalazioni.bulkAdd([
-    { veicoloId: 2, priorita: 'alta',   titolo: 'Spia freni accesa',    descrizione: 'La spia ABS si accende a freddo all\'avvio', segnalato: 'Sergio M.', data: fra(-5), stato: 'aperta',        dataCreazione: new Date().toISOString() },
-    { veicoloId: 1, priorita: 'media',  titolo: 'Rumore sospensione',   descrizione: 'Rumore metallico in curva a destra',        segnalato: 'Sara C.',   data: fra(-14), stato: 'in_lavorazione', dataCreazione: new Date().toISOString() },
+    { veicoloId: 2, priorita: 'alta',  titolo: 'Spia freni accesa',  descrizione: "La spia ABS si accende a freddo all'avvio", segnalato: 'Sergio M.', data: fra(-5),  stato: 'aperta',         dataCreazione: new Date().toISOString() },
+    { veicoloId: 1, priorita: 'media', titolo: 'Rumore sospensione', descrizione: 'Rumore metallico in curva a destra',        segnalato: 'Sara C.',   data: fra(-14), stato: 'in_lavorazione', dataCreazione: new Date().toISOString() },
   ]);
 
   console.log('[DB] Dati demo caricati');
