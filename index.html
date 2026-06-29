@@ -340,36 +340,9 @@
   </div>
 </div>
 
-<script type="module">
-  import { avviaSync, setOnRemoteUpdate, Veicoli, Rifornimenti, Manutenzioni, Segnalazioni, Scadenze, DataIO, caricaDatiDemo } from './db.js';
-
-  /* Rendi disponibili globalmente per app.js (script non-module) */
-  window.Veicoli       = Veicoli;
-  window.Rifornimenti  = Rifornimenti;
-  window.Manutenzioni  = Manutenzioni;
-  window.Segnalazioni  = Segnalazioni;
-  window.Scadenze      = Scadenze;
-  window.DataIO        = DataIO;
-  window.caricaDatiDemo = caricaDatiDemo;
-
-  /* Quando arriva un aggiornamento remoto, ri-renderizza la pagina corrente */
-  setOnRemoteUpdate((collezione) => {
-    if (window.State && window.renderPagina) {
-      window.renderPagina(window.State.paginaCorrente);
-    }
-  });
-
-  /* Avvia la sincronizzazione Firebase (non-bloccante) */
-  avviaSync().then(ok => {
-    if (ok) {
-      const ind = document.getElementById('sync-indicator');
-      if (ind) { ind.textContent = '☁ Sync attiva'; ind.style.color = 'var(--ok)'; }
-    }
-  });
-</script>
-
+<script src="firebase.js"></script>
+<script src="db.js"></script>
 <script src="app.js"></script>
-
 <script>
 function apriFAB() {
   const azioni = {

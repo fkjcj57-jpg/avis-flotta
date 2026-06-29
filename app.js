@@ -566,6 +566,10 @@ window.addEventListener('online', () => {
 /* ── Bootstrap ── */
 async function init() {
   await caricaDatiDemo();
+
+  // Avvia sync Firebase in background (non blocca la UI)
+  avviaSync().catch(err => console.warn('[Sync]', err));
+
   await inizializzaPWA();
 
   // Gestisci deeplink
