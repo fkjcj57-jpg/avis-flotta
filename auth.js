@@ -146,6 +146,8 @@ window.Auth = {
 
     // Avvia il caricamento dati e la navigazione (solo al primo login)
     if (window._avviaApp) {
+      // Prima avvia i listener Firestore (ora l'utente è autenticato)
+      if (window.avviaListener) avviaListener().catch(console.warn);
       window._avviaApp();
       window._avviaApp = null; // esegui una sola volta
     }

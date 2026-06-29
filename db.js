@@ -17,8 +17,13 @@ let _onRemoteUpdate = () => {};
 
 /* ── Avvia sincronizzazione Firebase ── */
 async function avviaSync() {
-  const ok = await window.inizializzaFirebase();
-  if (!ok) return;
+  // Solo inizializza Firebase — i listener partono dopo il login
+  return await window.inizializzaFirebase();
+}
+
+/* ── Avvia i listener Firestore (chiamato dopo il login confermato) ── */
+async function avviaListener() {
+  if (!window._fb || !window._fb.sync) return;
 
   const flagKey = 'avis_upload_fatto';
   if (!localStorage.getItem(flagKey)) {
@@ -275,11 +280,12 @@ async function caricaDatiDemo() {
 }
 
 /* ── Esponi tutto su window così app.js li trova ── */
-window.Veicoli       = Veicoli;
-window.Rifornimenti  = Rifornimenti;
-window.Manutenzioni  = Manutenzioni;
-window.Segnalazioni  = Segnalazioni;
-window.Scadenze      = Scadenze;
-window.DataIO        = DataIO;
+window.Veicoli        = Veicoli;
+window.Rifornimenti   = Rifornimenti;
+window.Manutenzioni   = Manutenzioni;
+window.Segnalazioni   = Segnalazioni;
+window.Scadenze       = Scadenze;
+window.DataIO         = DataIO;
 window.caricaDatiDemo = caricaDatiDemo;
-window.avviaSync     = avviaSync;
+window.avviaSync      = avviaSync;
+window.avviaListener  = avviaListener;
