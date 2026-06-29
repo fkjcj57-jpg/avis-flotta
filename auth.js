@@ -40,6 +40,11 @@ window.Auth = {
 
   /* ── Logout ── */
   async logout() {
+    // Ferma tutti i listener Firestore prima di uscire
+    if (window._fb && window._fb.unsubs) {
+      window._fb.unsubs.forEach(u => u());
+      window._fb.unsubs = [];
+    }
     const { getAuth, signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     await signOut(getAuth(window._fb.app));
   },
@@ -144,12 +149,20 @@ window.Auth = {
       });
     }
 
-    // Avvia il caricamento dati e la navigazione (solo al primo login)
+    // Avvia listener e navigazione ad ogni login
+    if (window.avviaListener) avviaListener().catch(console.warn);
+
     if (window._avviaApp) {
-      // Prima avvia i listener Firestore (ora l'utente è autenticato)
-      if (window.avviaListener) avviaListener().catch(console.warn);
+      // Primo login: usa la funzione già definita
       window._avviaApp();
-      window._avviaApp = null; // esegui una sola volta
+      window._avviaApp = null;
+    } else {
+      // Login successivi al primo: ricarica dati e naviga
+      caricaDatiDemo().then(() => {
+        const params = new URLSearchParams(location.search);
+        const pagina = (Auth?.ruoloUtente?.() === 'autista') ? 'segnalazioni' : (params.get('p') || 'dashboard');
+        if (window.navigate) navigate(pagina);
+      });
     }
   }
 };
