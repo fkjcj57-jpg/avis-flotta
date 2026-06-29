@@ -708,27 +708,7 @@ window.addEventListener('online', () => {
 
 /* ── Bootstrap ── */
 async function init() {
-  await caricaDatiDemo();
-
-  // Avvia sync Firebase in background (non blocca la UI)
-  avviaSync().catch(err => console.warn('[Sync]', err));
-
-  // Inizializza autenticazione — mostra login o app
-  if (window.Auth) {
-    await Auth.init();
-  }
-
   await inizializzaPWA();
-
-  // Gestisci deeplink
-  const params = new URLSearchParams(location.search);
-  const pagina = params.get('p') || 'dashboard';
-  navigate(pagina);
-
-  // Shortcut da manifest
-  const action = params.get('action');
-  if (action === 'rifornimento') setTimeout(() => openModalRifornimento(), 300);
-  if (action === 'segnalazione') setTimeout(() => openModalSegnalazione(), 300);
 
   // Chiudi modale cliccando overlay
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
@@ -736,6 +716,34 @@ async function init() {
       if (e.target === overlay) closeModal(overlay.id);
     });
   });
+
+  // Avvia Firebase e autenticazione
+  // L'app rimane nascosta finché Auth non conferma il login
+  avviaSync().catch(err => console.warn('[Sync]', err));
+
+  if (window.Auth) {
+    await Auth.init();
+    // Auth._aggiornaUI() gestisce mostrare login o app
+  } else {
+    // Fallback senza auth: mostra l'app direttamente (sviluppo locale)
+    await _avviaApp();
+  }
 }
+
+/* Chiamato da Auth._aggiornaUI() dopo login confermato */
+window._avviaApp = async function() {
+  await caricaDatiDemo();
+
+  const params = new URLSearchParams(location.search);
+  const pagina = params.get('p') || 'dashboard';
+
+  // Per l'autista vai sempre a segnalazioni
+  const paginaIniziale = (Auth?.ruoloUtente?.() === 'autista') ? 'segnalazioni' : pagina;
+  navigate(paginaIniziale);
+
+  const action = params.get('action');
+  if (action === 'rifornimento') setTimeout(() => openModalRifornimento(), 300);
+  if (action === 'segnalazione') setTimeout(() => openModalSegnalazione(), 300);
+};
 
 document.addEventListener('DOMContentLoaded', init);

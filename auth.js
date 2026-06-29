@@ -113,45 +113,41 @@ window.Auth = {
   /* ── Aggiorna UI in base al ruolo ── */
   _aggiornaUI() {
     if (!Auth.utente) {
-      mostraSchermataLogin();
+      // Mostra login, nascondi app
+      document.getElementById('schermata-login')?.classList.remove('hidden');
+      document.getElementById('app')?.classList.add('hidden');
       return;
     }
 
-    // Mostra l'app
+    // Utente loggato: nascondi login, mostra app
     document.getElementById('schermata-login')?.classList.add('hidden');
     document.getElementById('app')?.classList.remove('hidden');
 
-    // Nome utente in topbar
+    // Nome e ruolo in topbar
     const nomeEl = document.getElementById('topbar-nome');
     if (nomeEl) nomeEl.textContent = Auth.nomeUtente();
-
     const ruoloEl = document.getElementById('topbar-ruolo');
     if (ruoloEl) ruoloEl.textContent = Auth.ruoloUtente();
 
-    // Nascondi sezioni in base al ruolo
-    const soloResponsabile = document.querySelectorAll('[data-ruolo="responsabile"]');
-    const soloOperatore    = document.querySelectorAll('[data-ruolo="operatore"]');
-
-    soloResponsabile.forEach(el => {
+    // Nascondi elementi in base al ruolo
+    document.querySelectorAll('[data-ruolo="responsabile"]').forEach(el => {
       el.classList.toggle('hidden', !Auth.isResponsabile());
     });
-
-    soloOperatore.forEach(el => {
+    document.querySelectorAll('[data-ruolo="operatore"]').forEach(el => {
       el.classList.toggle('hidden', !Auth.isOperatore());
     });
 
-    // Autista: mostra solo la sezione segnalazioni nella nav
+    // Autista: nascondi tutto tranne segnalazioni
     if (Auth.ruoloUtente() === 'autista') {
       document.querySelectorAll('.nav-item:not([data-page="segnalazioni"])').forEach(el => {
         el.classList.add('hidden');
       });
-      // Naviga direttamente a segnalazioni
-      if (window.navigate) window.navigate('segnalazioni');
+    }
+
+    // Avvia il caricamento dati e la navigazione (solo al primo login)
+    if (window._avviaApp) {
+      window._avviaApp();
+      window._avviaApp = null; // esegui una sola volta
     }
   }
 };
-
-function mostraSchermataLogin() {
-  document.getElementById('schermata-login')?.classList.remove('hidden');
-  document.getElementById('app')?.classList.add('hidden');
-}
