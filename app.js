@@ -606,6 +606,7 @@ async function eseguiLogin() {
   const password = document.getElementById('login-password').value;
   const errEl    = document.getElementById('login-errore');
   const testoEl  = document.getElementById('login-errore-testo');
+  const btnLogin = document.querySelector('#schermata-login .btn-primary');
 
   errEl.classList.add('hidden');
   if (!email || !password) {
@@ -614,12 +615,23 @@ async function eseguiLogin() {
     return;
   }
 
+  // Controllo Firebase pronto
+  if (!window._fb || !window._fb.app) {
+    testoEl.textContent = 'Connessione in corso, riprova tra qualche secondo';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  // Feedback visivo durante il login
+  if (btnLogin) { btnLogin.textContent = 'Accesso in corso...'; btnLogin.disabled = true; }
+
   try {
     await Auth.login(email, password);
     // Auth._aggiornaUI() viene chiamato automaticamente da onAuthStateChanged
   } catch (err) {
     testoEl.textContent = 'Email o password errati';
     errEl.classList.remove('hidden');
+    if (btnLogin) { btnLogin.innerHTML = '<i class="ti ti-login"></i> Accedi'; btnLogin.disabled = false; }
   }
 }
 
@@ -717,15 +729,18 @@ async function init() {
     });
   });
 
-  // Avvia Firebase e autenticazione
-  // L'app rimane nascosta finché Auth non conferma il login
-  avviaSync().catch(err => console.warn('[Sync]', err));
+  // 1. Prima inizializza Firebase (AWAIT — Auth ne ha bisogno)
+  try {
+    await avviaSync();
+  } catch(err) {
+    console.warn('[Sync]', err);
+  }
 
-  if (window.Auth) {
+  // 2. Poi inizializza Auth — ora window._fb.app esiste
+  if (window.Auth && window._fb && window._fb.app) {
     await Auth.init();
-    // Auth._aggiornaUI() gestisce mostrare login o app
   } else {
-    // Fallback senza auth: mostra l'app direttamente (sviluppo locale)
+    console.warn('[Auth] Firebase non disponibile, fallback senza auth');
     await _avviaApp();
   }
 }
