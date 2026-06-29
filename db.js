@@ -22,8 +22,10 @@ async function avviaSync() {
 }
 
 /* ── Avvia i listener Firestore (chiamato dopo il login confermato) ── */
+let _listenerAttivi = false;
 async function avviaListener() {
   if (!window._fb || !window._fb.sync) return;
+  if (_listenerAttivi) return; // evita duplicati
 
   const flagKey = 'avis_upload_fatto';
   if (!localStorage.getItem(flagKey)) {
@@ -44,7 +46,18 @@ async function avviaListener() {
   window.fbStartListener('rifornimenti', db.rifornimenti, refresh);
   window.fbStartListener('manutenzioni', db.manutenzioni, refresh);
   window.fbStartListener('segnalazioni', db.segnalazioni, refresh);
+  _listenerAttivi = true;
   console.log('[DB] Listener attivi');
+}
+
+/* ── Ferma i listener (chiamato al logout) ── */
+function fermaListener() {
+  if (window._fb && window._fb.unsubs) {
+    window._fb.unsubs.forEach(u => u());
+    window._fb.unsubs = [];
+  }
+  _listenerAttivi = false;
+  console.log('[DB] Listener fermati');
 }
 
 /* ────────── VEICOLI ────────── */
@@ -289,3 +302,4 @@ window.DataIO         = DataIO;
 window.caricaDatiDemo = caricaDatiDemo;
 window.avviaSync      = avviaSync;
 window.avviaListener  = avviaListener;
+window.fermaListener  = fermaListener;

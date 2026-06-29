@@ -8,6 +8,7 @@ window.Auth = {
   utente:  null,   // oggetto Firebase User
   profilo: null,   // { nome, ruolo, email } da Firestore
   pronto:  false,
+  _shortcutGestito: false,
 
   /* ── Inizializza listener autenticazione ── */
   async init() {
@@ -41,12 +42,11 @@ window.Auth = {
   /* ── Logout ── */
   async logout() {
     // Ferma tutti i listener Firestore prima di uscire
-    if (window._fb && window._fb.unsubs) {
-      window._fb.unsubs.forEach(u => u());
-      window._fb.unsubs = [];
-    }
+    if (window.fermaListener) window.fermaListener();
     const { getAuth, signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     await signOut(getAuth(window._fb.app));
+    // Reset flag shortcut così al prossimo login non si riaprono modali
+    Auth._shortcutGestito = true;
   },
 
   /* ── Carica profilo utente da Firestore ── */
@@ -115,16 +115,25 @@ window.Auth = {
   nomeUtente()     { return Auth.profilo?.nome || 'Utente'; },
   ruoloUtente()    { return Auth.profilo?.ruolo || 'autista'; },
 
-  /* ── Aggiorna UI in base al ruolo ── */
-  _aggiornaUI() {
+  /* ── Aggiorna UI in base al ruolo (idempotente) ── */
+  async _aggiornaUI() {
+    // PRIMA COSA: ripristina sempre la nav a stato pulito
+    // (rimuove le classi hidden aggiunte da login precedenti)
+    document.querySelectorAll('.nav-item').forEach(el => {
+      if (el.dataset.ruolo !== 'responsabile') el.classList.remove('hidden');
+    });
+
     if (!Auth.utente) {
-      // Mostra login, nascondi app
+      // Non loggato: mostra login, nascondi app
       document.getElementById('schermata-login')?.classList.remove('hidden');
       document.getElementById('app')?.classList.add('hidden');
+      // Ripristina pulsante login
+      const btn = document.querySelector('#schermata-login .btn-primary');
+      if (btn) { btn.innerHTML = '<i class="ti ti-login"></i> Accedi'; btn.disabled = false; }
       return;
     }
 
-    // Utente loggato: nascondi login, mostra app
+    // Loggato: nascondi login, mostra app
     document.getElementById('schermata-login')?.classList.add('hidden');
     document.getElementById('app')?.classList.remove('hidden');
 
@@ -134,7 +143,7 @@ window.Auth = {
     const ruoloEl = document.getElementById('topbar-ruolo');
     if (ruoloEl) ruoloEl.textContent = Auth.ruoloUtente();
 
-    // Nascondi elementi in base al ruolo
+    // Mostra/nascondi elementi per ruolo
     document.querySelectorAll('[data-ruolo="responsabile"]').forEach(el => {
       el.classList.toggle('hidden', !Auth.isResponsabile());
     });
@@ -142,27 +151,33 @@ window.Auth = {
       el.classList.toggle('hidden', !Auth.isOperatore());
     });
 
-    // Autista: nascondi tutto tranne segnalazioni
+    // Autista: nascondi tutte le voci nav tranne segnalazioni
     if (Auth.ruoloUtente() === 'autista') {
       document.querySelectorAll('.nav-item:not([data-page="segnalazioni"])').forEach(el => {
         el.classList.add('hidden');
       });
     }
 
-    // Avvia listener e navigazione ad ogni login
-    if (window.avviaListener) avviaListener().catch(console.warn);
+    // Avvia listener Firestore (ora l'utente è autenticato)
+    if (window.avviaListener) {
+      try { await avviaListener(); } catch (e) { console.warn('[Listener]', e); }
+    }
 
-    if (window._avviaApp) {
-      // Primo login: usa la funzione già definita
-      window._avviaApp();
-      window._avviaApp = null;
-    } else {
-      // Login successivi al primo: ricarica dati e naviga
-      caricaDatiDemo().then(() => {
-        const params = new URLSearchParams(location.search);
-        const pagina = (Auth?.ruoloUtente?.() === 'autista') ? 'segnalazioni' : (params.get('p') || 'dashboard');
-        if (window.navigate) navigate(pagina);
-      });
+    // Carica dati e naviga — SEMPRE, ad ogni login
+    try { await caricaDatiDemo(); } catch (e) { console.warn('[Demo]', e); }
+
+    const params = new URLSearchParams(location.search);
+    const pagina = (Auth.ruoloUtente() === 'autista')
+      ? 'segnalazioni'
+      : (params.get('p') || 'dashboard');
+    if (window.navigate) navigate(pagina);
+
+    // Gestisci shortcut da manifest (solo primo caricamento)
+    if (!Auth._shortcutGestito) {
+      Auth._shortcutGestito = true;
+      const action = params.get('action');
+      if (action === 'rifornimento') setTimeout(() => window.openModalRifornimento?.(), 300);
+      if (action === 'segnalazione') setTimeout(() => window.openModalSegnalazione?.(), 300);
     }
   }
 };

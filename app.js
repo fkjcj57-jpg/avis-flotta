@@ -11,6 +11,7 @@ const State = {
   filtroSegnalazioni:'tutte',
   deferredInstall: null,
 };
+window.State = State;
 
 /* ── Utilità date ── */
 const fmt = (iso) => {
@@ -62,6 +63,7 @@ async function renderPagina(pagina) {
     case 'utenti':        return renderUtenti();
   }
 }
+window.renderPagina = renderPagina;
 
 /* ── Dashboard ── */
 async function renderDashboard() {
@@ -741,26 +743,13 @@ async function init() {
   // 2. Poi inizializza Auth — ora window._fb.app esiste
   if (window.Auth && window._fb && window._fb.app) {
     await Auth.init();
+    // Auth._aggiornaUI() gestisce tutto: login, dati, navigazione
   } else {
-    console.warn('[Auth] Firebase non disponibile, fallback senza auth');
-    await _avviaApp();
+    // Fallback senza Firebase (sviluppo locale): mostra app direttamente
+    console.warn('[Auth] Firebase non disponibile, modalità locale');
+    await caricaDatiDemo();
+    navigate('dashboard');
   }
 }
-
-/* Chiamato da Auth._aggiornaUI() dopo login confermato */
-window._avviaApp = async function() {
-  await caricaDatiDemo();
-
-  const params = new URLSearchParams(location.search);
-  const pagina = params.get('p') || 'dashboard';
-
-  // Per l'autista vai sempre a segnalazioni
-  const paginaIniziale = (Auth?.ruoloUtente?.() === 'autista') ? 'segnalazioni' : pagina;
-  navigate(paginaIniziale);
-
-  const action = params.get('action');
-  if (action === 'rifornimento') setTimeout(() => openModalRifornimento(), 300);
-  if (action === 'segnalazione') setTimeout(() => openModalSegnalazione(), 300);
-};
 
 document.addEventListener('DOMContentLoaded', init);
