@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#C8102E">
+  <meta name="description" content="Gestione flotta veicoli AVIS Provinciale Brescia">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="AVIS Flotta">
+
+  <title>AVIS Flotta — Brescia</title>
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+
+  <!-- Tabler Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/dist/tabler-icons.min.css">
+  <!-- Dexie.js (IndexedDB wrapper) -->
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.7/dist/dexie.min.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Topbar ── -->
+  <header id="topbar">
+    <div class="logo">A</div>
+    <div class="titles">
+      <h1>AVIS Flotta</h1>
+      <p>Provinciale Brescia</p>
+    </div>
+    <div class="topbar-actions">
+      <button class="notif-btn" onclick="richiediNotifiche()" id="btn-notifiche"
+              title="Attiva notifiche" style="display:none" aria-label="Attiva notifiche">
+        <i class="ti ti-bell"></i>
+        <span class="notif-badge" id="notif-badge">0</span>
+      </button>
+      <button class="notif-btn" onclick="DataIO.esportaJSON()" title="Esporta dati" aria-label="Esporta backup">
+        <i class="ti ti-download"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Offline bar ── -->
+  <div id="offline-bar">
+    <i class="ti ti-wifi-off"></i> Modalità offline — i dati sono salvati localmente
+  </div>
+
+  <!-- ── Install banner ── -->
+  <div id="install-banner">
+    <i class="ti ti-device-mobile"></i>
+    <div><strong>Installa l'app</strong> per usarla offline e ricevere notifiche</div>
+    <button class="btn-install" onclick="installaApp()">Installa</button>
+  </div>
+
+  <!-- ── Nav (desktop: top, mobile: bottom) ── -->
+  <nav id="nav" role="navigation" aria-label="Navigazione principale">
+    <button class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')" aria-label="Dashboard">
+      <span class="nav-icon"><i class="ti ti-dashboard" aria-hidden="true"></i></span>
+      <span>Home</span>
+    </button>
+    <button class="nav-item" data-page="veicoli" onclick="navigate('veicoli')" aria-label="Veicoli">
+      <span class="nav-icon"><i class="ti ti-car" aria-hidden="true"></i></span>
+      <span>Veicoli</span>
+    </button>
+    <button class="nav-item" data-page="rifornimenti" onclick="navigate('rifornimenti')" aria-label="Rifornimenti">
+      <span class="nav-icon"><i class="ti ti-droplet" aria-hidden="true"></i></span>
+      <span>Rifornimenti</span>
+    </button>
+    <button class="nav-item" data-page="manutenzioni" onclick="navigate('manutenzioni')" aria-label="Manutenzioni">
+      <span class="nav-icon"><i class="ti ti-tool" aria-hidden="true"></i></span>
+      <span>Manutenzioni</span>
+    </button>
+    <button class="nav-item" data-page="segnalazioni" onclick="navigate('segnalazioni')" aria-label="Segnalazioni">
+      <span class="nav-icon"><i class="ti ti-alert-triangle" aria-hidden="true"></i></span>
+      <span>Guasti</span>
+    </button>
+  </nav>
+
+  <!-- ── Main ── -->
+  <main id="main" role="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-num" id="dash-veicoli" style="color:#C8102E">—</div>
+          <div class="stat-label">Veicoli attivi</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="dash-scadenze" style="color:#854F0B">—</div>
+          <div class="stat-label">Scadenze urgenti</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="dash-guasti" style="color:#A32D2D">—</div>
+          <div class="stat-label">Guasti aperti</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="dash-costo">—</div>
+          <div class="stat-label">Costi (mese)</div>
+        </div>
+      </div>
+
+      <div id="dash-alerts"></div>
+
+      <div class="section-header" style="margin-top:16px">
+        <h2 class="section-title">Ultime attività</h2>
+      </div>
+      <div class="card" id="dash-attivita" style="padding:10px 14px">
+        <div style="padding:20px;text-align:center;color:var(--text-secondary);font-size:14px">Caricamento...</div>
+      </div>
+    </div>
+
+    <!-- VEICOLI -->
+    <div class="page" id="page-veicoli">
+      <div class="section-header">
+        <h2 class="section-title">Veicoli</h2>
+        <button class="btn-add hidden" onclick="openModalVeicolo()">
+          <i class="ti ti-plus"></i> Aggiungi
+        </button>
+      </div>
+      <div class="filter-row">
+        <button class="chip active" onclick="setFiltro('veicoli','tutti',this)">Tutti</button>
+        <button class="chip" onclick="setFiltro('veicoli','ok',this)">Regolari</button>
+        <button class="chip" onclick="setFiltro('veicoli','warning',this)">In scadenza</button>
+        <button class="chip" onclick="setFiltro('veicoli','scaduto',this)">Scaduti</button>
+      </div>
+      <div id="veicoli-list"></div>
+    </div>
+
+    <!-- RIFORNIMENTI -->
+    <div class="page" id="page-rifornimenti">
+      <div class="section-header">
+        <h2 class="section-title">Rifornimenti</h2>
+        <button class="btn-add hidden" onclick="openModalRifornimento()">
+          <i class="ti ti-plus"></i> Registra
+        </button>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat-card"><div class="stat-num" id="rif-litri">—</div><div class="stat-label">Litri totali</div></div>
+        <div class="stat-card"><div class="stat-num" id="rif-costo">—</div><div class="stat-label">Spesa totale</div></div>
+        <div class="stat-card"><div class="stat-num" id="rif-num">—</div><div class="stat-label">Rifornimenti</div></div>
+      </div>
+      <div id="rif-list"></div>
+    </div>
+
+    <!-- MANUTENZIONI -->
+    <div class="page" id="page-manutenzioni">
+      <div class="section-header">
+        <h2 class="section-title">Manutenzioni</h2>
+        <button class="btn-add hidden" onclick="openModalManutenzione()">
+          <i class="ti ti-plus"></i> Registra
+        </button>
+      </div>
+      <div class="stats-grid" style="grid-template-columns:1fr 1fr">
+        <div class="stat-card"><div class="stat-num" id="mant-costo">—</div><div class="stat-label">Costi totali</div></div>
+        <div class="stat-card"><div class="stat-num" id="mant-num">—</div><div class="stat-label">Interventi</div></div>
+      </div>
+      <div class="filter-row">
+        <button class="chip active" onclick="setFiltro('manutenzioni','tutti',this)">Tutti</button>
+        <button class="chip" onclick="setFiltro('manutenzioni','ordinaria',this)">Ordinaria</button>
+        <button class="chip" onclick="setFiltro('manutenzioni','straordinaria',this)">Straordinaria</button>
+      </div>
+      <div id="mant-list"></div>
+    </div>
+
+    <!-- SEGNALAZIONI -->
+    <div class="page" id="page-segnalazioni">
+      <div class="section-header">
+        <h2 class="section-title">Segnalazioni guasti</h2>
+        <button class="btn-add hidden" onclick="openModalSegnalazione()">
+          <i class="ti ti-plus"></i> Nuova
+        </button>
+      </div>
+      <div class="filter-row">
+        <button class="chip active" onclick="setFiltro('segnalazioni','tutte',this)">Tutte</button>
+        <button class="chip" onclick="setFiltro('segnalazioni','aperta',this)">Aperte</button>
+        <button class="chip" onclick="setFiltro('segnalazioni','in_lavorazione',this)">In lavorazione</button>
+        <button class="chip" onclick="setFiltro('segnalazioni','chiusa',this)">Chiuse</button>
+      </div>
+      <div id="segn-list"></div>
+    </div>
+
+  </main>
+
+  <!-- ── FAB mobile ── -->
+  <button class="fab" id="fab" onclick="apriFAB()" aria-label="Aggiungi">
+    <i class="ti ti-plus"></i>
+  </button>
+
+</div><!-- #app -->
+
+<!-- ── Toast container ── -->
+<div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+<!-- ── MODALE: Veicolo ── -->
+<div class="modal-overlay" id="modal-veicolo" role="dialog" aria-modal="true" aria-labelledby="modal-veicolo-title">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-veicolo-title">Aggiungi veicolo</h2>
+      <button class="close-btn" onclick="closeModal('modal-veicolo')" aria-label="Chiudi">
+        <i class="ti ti-x"></i>
+      </button>
+    </div>
+    <form id="form-veicolo" onsubmit="return false">
+      <div class="form-row">
+        <div class="form-group"><label for="v-targa">Targa *</label><input type="text" id="v-targa" placeholder="BS 123 AA" required></div>
+        <div class="form-group"><label for="v-anno">Anno</label><input type="number" id="v-anno" placeholder="2022" min="1990" max="2030"></div>
+      </div>
+      <div class="form-group"><label for="v-modello">Marca e modello</label><input type="text" id="v-modello" placeholder="Fiat Doblò"></div>
+      <div class="form-row">
+        <div class="form-group"><label for="v-kmAttuali">Km attuali</label><input type="number" id="v-kmAttuali" placeholder="45000"></div>
+        <div class="form-group"><label for="v-carburante">Carburante</label>
+          <select id="v-carburante"><option>Diesel</option><option>Benzina</option><option>GPL</option><option>Elettrico</option><option>Ibrido</option></select>
+        </div>
+      </div>
+      <div class="form-group"><label for="v-sede">Sede assegnazione</label>
+        <select id="v-sede"><option>Brescia</option><option>Cunettone di Salò</option><option>Mobile</option><option>Altra sede</option></select>
+      </div>
+      <hr style="border:none;border-top:0.5px solid var(--border);margin:12px 0">
+      <div style="font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Scadenze</div>
+      <div class="form-row">
+        <div class="form-group"><label for="v-tagliandoData">Prossimo tagliando</label><input type="date" id="v-tagliandoData"></div>
+        <div class="form-group"><label for="v-tagliandoKm">Km tagliando</label><input type="number" id="v-tagliandoKm" placeholder="60000"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label for="v-bolloScadenza">Scadenza bollo</label><input type="date" id="v-bolloScadenza"></div>
+        <div class="form-group"><label for="v-revisioneData">Scadenza revisione</label><input type="date" id="v-revisioneData"></div>
+      </div>
+      <div class="form-group"><label for="v-assicurazione">Scadenza assicurazione</label><input type="date" id="v-assicurazione"></div>
+      <div class="form-group"><label for="v-note">Note</label><textarea id="v-note" placeholder="Note aggiuntive..."></textarea></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="salvaVeicolo()"><i class="ti ti-device-floppy"></i> Salva</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-veicolo')">Annulla</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── MODALE: Rifornimento ── -->
+<div class="modal-overlay" id="modal-rifornimento" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2 class="modal-title">Registra rifornimento</h2>
+      <button class="close-btn" onclick="closeModal('modal-rifornimento')" aria-label="Chiudi"><i class="ti ti-x"></i></button>
+    </div>
+    <form id="form-rifornimento" onsubmit="return false">
+      <div class="form-group"><label for="r-veicoloId">Veicolo *</label><select id="r-veicoloId"></select></div>
+      <div class="form-row">
+        <div class="form-group"><label for="r-data">Data *</label><input type="date" id="r-data" required></div>
+        <div class="form-group"><label for="r-km">Km al rifornimento</label><input type="number" id="r-km" placeholder="45823"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label for="r-litri">Litri *</label><input type="number" step="0.01" id="r-litri" placeholder="42.5" required></div>
+        <div class="form-group"><label for="r-costo">Costo totale (€)</label><input type="number" step="0.01" id="r-costo" placeholder="72.24"></div>
+      </div>
+      <div class="form-group"><label for="r-carburante">Carburante</label>
+        <select id="r-carburante"><option>Diesel</option><option>Benzina</option><option>GPL</option><option>Elettrico (kWh)</option></select>
+      </div>
+      <div class="form-group"><label for="r-distributore">Distributore</label><input type="text" id="r-distributore" placeholder="Es. Agip Brescia Nord"></div>
+      <div class="form-group"><label for="r-note">Note</label><textarea id="r-note" placeholder="Note opzionali..."></textarea></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="salvaRifornimento()"><i class="ti ti-device-floppy"></i> Salva</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-rifornimento')">Annulla</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── MODALE: Manutenzione ── -->
+<div class="modal-overlay" id="modal-manutenzione" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2 class="modal-title">Registra intervento</h2>
+      <button class="close-btn" onclick="closeModal('modal-manutenzione')" aria-label="Chiudi"><i class="ti ti-x"></i></button>
+    </div>
+    <form id="form-manutenzione" onsubmit="return false">
+      <div class="form-group"><label for="m-veicoloId">Veicolo *</label><select id="m-veicoloId"></select></div>
+      <div class="form-group"><label for="m-tipo">Tipo intervento</label>
+        <select id="m-tipo">
+          <option value="ordinaria">Ordinaria — tagliando, filtri, olio...</option>
+          <option value="straordinaria">Straordinaria — guasto, carrozzeria...</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label for="m-data">Data *</label><input type="date" id="m-data" required></div>
+        <div class="form-group"><label for="m-km">Km al momento</label><input type="number" id="m-km" placeholder="45200"></div>
+      </div>
+      <div class="form-group"><label for="m-descrizione">Descrizione intervento *</label><textarea id="m-descrizione" placeholder="Es. Cambio olio 5W30, filtro olio, filtro aria..." required></textarea></div>
+      <div class="form-group"><label for="m-officina">Officina</label><input type="text" id="m-officina" placeholder="Es. Officina Rossi Brescia"></div>
+      <div class="form-group"><label for="m-costo">Costo (€)</label><input type="number" step="0.01" id="m-costo" placeholder="185.00"></div>
+      <div class="form-row">
+        <div class="form-group"><label for="m-prossimoIntervento">Prossimo intervento</label><input type="date" id="m-prossimoIntervento"></div>
+        <div class="form-group"><label for="m-prossimoKm">Prossimi km</label><input type="number" id="m-prossimoKm" placeholder="75000"></div>
+      </div>
+      <div class="form-group"><label for="m-note">Note</label><textarea id="m-note" placeholder="Note tecniche, ricambi usati..."></textarea></div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="salvaManutenzione()"><i class="ti ti-device-floppy"></i> Salva</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-manutenzione')">Annulla</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── MODALE: Segnalazione ── -->
+<div class="modal-overlay" id="modal-segnalazione" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2 class="modal-title">Nuova segnalazione</h2>
+      <button class="close-btn" onclick="closeModal('modal-segnalazione')" aria-label="Chiudi"><i class="ti ti-x"></i></button>
+    </div>
+    <form id="form-segnalazione" onsubmit="return false">
+      <div class="form-group"><label for="sg-veicoloId">Veicolo *</label><select id="sg-veicoloId"></select></div>
+      <div class="form-group"><label for="sg-priorita">Priorità</label>
+        <select id="sg-priorita">
+          <option value="alta">Alta — guasto che blocca l'utilizzo</option>
+          <option value="media">Media — problema da risolvere presto</option>
+          <option value="bassa">Bassa — segnalazione preventiva</option>
+        </select>
+      </div>
+      <div class="form-group"><label for="sg-titolo">Titolo segnalazione *</label><input type="text" id="sg-titolo" placeholder="Es. Spia freni accesa" required></div>
+      <div class="form-group"><label for="sg-descrizione">Descrizione</label><textarea id="sg-descrizione" placeholder="Descrivi il problema in dettaglio..."></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label for="sg-segnalato">Segnalato da</label><input type="text" id="sg-segnalato" placeholder="Nome volontario"></div>
+        <div class="form-group"><label for="sg-data">Data</label><input type="date" id="sg-data"></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="salvaSegnalazione()"><i class="ti ti-send"></i> Invia</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-segnalazione')">Annulla</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="db.js"></script>
+<script src="app.js"></script>
+<script>
+/* FAB contestuale per pagina */
+function apriFAB() {
+  const azioni = {
+    dashboard:    () => { /* mostra menu rapido */ },
+    veicoli:      () => openModalVeicolo(),
+    rifornimenti: () => openModalRifornimento(),
+    manutenzioni: () => openModalManutenzione(),
+    segnalazioni: () => openModalSegnalazione(),
+  };
+  (azioni[State.paginaCorrente] || azioni.veicoli)();
+}
+
+/* Aggiorna azione FAB a ogni navigazione */
+const origNavigate = navigate;
+window.navigate = function(pagina) {
+  origNavigate(pagina);
+  // Mostra i btn-add su desktop
+  document.querySelectorAll('.btn-add').forEach(b => b.classList.remove('hidden'));
+};
+</script>
+
+</body>
+</html>
