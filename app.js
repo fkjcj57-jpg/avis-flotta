@@ -767,6 +767,35 @@ async function eseguiLogout() {
   await Auth.logout();
 }
 
+/* ── Cambio password utente corrente ── */
+function openModalPassword() {
+  const form = document.getElementById('form-password');
+  if (form) form.reset();
+  openModal('modal-password');
+}
+
+async function salvaPassword() {
+  const nuova    = document.getElementById('p-nuova').value;
+  const conferma = document.getElementById('p-conferma').value;
+
+  if (!nuova || !conferma) { showToast('Compila entrambi i campi', 'danger'); return; }
+  if (nuova.length < 8)    { showToast('Password minimo 8 caratteri', 'danger'); return; }
+  if (nuova !== conferma)  { showToast('Le due password non coincidono', 'danger'); return; }
+
+  try {
+    await Auth.cambiaPassword(nuova);
+    showToast('Password aggiornata', 'ok');
+    closeModal('modal-password');
+  } catch (err) {
+    // Firebase richiede un accesso recente per operazioni sensibili
+    if (err && err.code === 'auth/requires-recent-login') {
+      showToast('Per sicurezza, esci e rientra, poi riprova subito', 'danger');
+    } else {
+      showToast('Errore: ' + (err.message || 'riprovare'), 'danger');
+    }
+  }
+}
+
 /* ── Crea nuovo utente (responsabile) ── */
 async function creaUtente() {
   const nome     = document.getElementById('u-nome').value.trim();

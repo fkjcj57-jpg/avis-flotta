@@ -75,6 +75,9 @@
       <button class="notif-btn" onclick="DataIO.esportaJSON()" title="Esporta dati" aria-label="Esporta backup">
         <i class="ti ti-download"></i>
       </button>
+      <button class="notif-btn" onclick="openModalPassword()" title="Cambia password" aria-label="Cambia password">
+        <i class="ti ti-key"></i>
+      </button>
       <button class="notif-btn" onclick="eseguiLogout()" title="Esci" aria-label="Logout">
         <i class="ti ti-logout"></i>
       </button>
@@ -386,6 +389,26 @@
       <div class="btn-row">
         <button class="btn btn-primary" onclick="salvaSegnalazione()"><i class="ti ti-send"></i> Invia</button>
         <button class="btn btn-secondary" onclick="closeModal('modal-segnalazione')">Annulla</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── MODALE: Cambio password ── -->
+<div class="modal-overlay" id="modal-password" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2 class="modal-title">Cambia password</h2>
+      <button class="close-btn" onclick="closeModal('modal-password')" aria-label="Chiudi"><i class="ti ti-x"></i></button>
+    </div>
+    <form id="form-password" onsubmit="return false">
+      <div class="form-group"><label for="p-nuova">Nuova password</label><input type="password" id="p-nuova" placeholder="Min. 8 caratteri" autocomplete="new-password"></div>
+      <div class="form-group"><label for="p-conferma">Conferma nuova password</label><input type="password" id="p-conferma" placeholder="Ripeti la password" autocomplete="new-password"></div>
+      <div class="text-xs text-muted" style="margin-bottom:12px">Usa una password lunga e non utilizzata su altri siti.</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="salvaPassword()"><i class="ti ti-device-floppy"></i> Aggiorna password</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-password')">Annulla</button>
       </div>
     </form>
   </div>
