@@ -1,15 +1,25 @@
-/* AVIS Flotta — Service Worker v1.0 */
+/* AVIS Flotta — Service Worker v2 */
 
-const CACHE_NAME = 'avis-flotta-v1';
+/* IMPORTANTE: ad ogni modifica di index.html / app.js / db.js / style.css
+   incrementa il numero di versione qui sotto (es. v2 → v3).
+   È questo cambiamento che fa rilevare l'aggiornamento al browser e
+   forza il ri-download dei file freschi, eliminando la cache vecchia. */
+const CACHE_NAME = 'avis-flotta-v2';
+
+/* Percorsi RELATIVI: l'app è ospitata in sottocartella su GitHub Pages
+   (es. /avis-flotta/), quindi i percorsi assoluti dalla radice romperebbero
+   la cache e l'avvio da home screen. */
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/app.js',
-  '/db.js',
-  '/style.css',
-  '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png'
+  './',
+  './index.html',
+  './app.js',
+  './db.js',
+  './firebase.js',
+  './auth.js',
+  './style.css',
+  './manifest.json',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
 ];
 
 /* ── Install: pre-cache shell ── */
@@ -32,16 +42,20 @@ self.addEventListener('activate', event => {
   );
 });
 
-/* ── Fetch: cache-first per asset, network-first per dati ── */
+/* ── Fetch: network-first per la shell, cache-first per le icone ──
+   Per i file di codice (html/js/css) usiamo network-first: così, appena
+   c'è connessione, l'utente riceve sempre la versione aggiornata e la
+   cache resta solo come fallback offline. Le icone, che non cambiano,
+   restano cache-first per velocità. */
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Ignora richieste non-GET e cross-origin
+  // Ignora richieste non-GET e cross-origin (Firebase, CDN, ecc.)
   if (event.request.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
 
-  // Cache-first per asset statici
-  if (STATIC_ASSETS.some(a => url.pathname === a || url.pathname.startsWith('/icons/'))) {
+  // Cache-first SOLO per le icone
+  if (url.pathname.includes('/icons/')) {
     event.respondWith(
       caches.match(event.request).then(cached =>
         cached || fetch(event.request).then(response => {
@@ -54,7 +68,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Network-first per tutto il resto (con fallback cache)
+  // Network-first per tutto il resto (shell + dati), con fallback cache
   event.respondWith(
     fetch(event.request)
       .then(response => {
@@ -62,7 +76,7 @@ self.addEventListener('fetch', event => {
         caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
   );
 });
 
@@ -74,8 +88,6 @@ self.addEventListener('sync', event => {
 });
 
 async function syncDatiPendenti() {
-  // Apri IndexedDB e invia le operazioni in coda
-  // (implementazione completa nella versione con backend)
   console.log('[SW] Background sync completato');
 }
 
@@ -85,10 +97,10 @@ self.addEventListener('push', event => {
   const title = data.title || 'AVIS Flotta';
   const options = {
     body: data.body || 'Hai notifiche in attesa',
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
     tag: data.tag || 'avis-notifica',
-    data: { url: data.url || '/' },
+    data: { url: data.url || './' },
     actions: [
       { action: 'apri', title: 'Apri app' },
       { action: 'ignora', title: 'Ignora' }
@@ -100,10 +112,10 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   if (event.action === 'apri' || !event.action) {
-    const url = event.notification.data.url || '/';
+    const url = event.notification.data.url || './';
     event.waitUntil(
       clients.matchAll({ type: 'window' }).then(clientList => {
-        const existing = clientList.find(c => c.url === url && 'focus' in c);
+        const existing = clientList.find(c => 'focus' in c);
         if (existing) return existing.focus();
         return clients.openWindow(url);
       })
@@ -119,7 +131,5 @@ self.addEventListener('periodicsync', event => {
 });
 
 async function verificaScadenze() {
-  // Legge i veicoli da IndexedDB e controlla le scadenze
-  // Invia notifiche push locali se necessario
   console.log('[SW] Verifica scadenze completata');
 }

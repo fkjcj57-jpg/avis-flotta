@@ -600,11 +600,11 @@ async function inviaNotificaSegnalazione(titolo, descrizione, priorita, veicolo)
   const reg = await navigator.serviceWorker.ready;
   reg.showNotification(`${icona} Nuovo guasto: ${titolo}`, {
     body:    [targa, descrizione].filter(Boolean).join('\n'),
-    icon:    '/icons/icon-192.png',
-    badge:   '/icons/icon-192.png',
+    icon:    './icons/icon-192.png',
+    badge:   './icons/icon-192.png',
     tag:     'segnalazione-' + Date.now(),
     vibrate: priorita === 'alta' ? [200, 100, 200, 100, 200] : [200],
-    data:    { url: '/?p=segnalazioni' },
+    data:    { url: './?p=segnalazioni' },
     actions: [
       { action: 'apri',   title: 'Apri segnalazioni' },
       { action: 'ignora', title: 'Ignora' }
@@ -665,10 +665,9 @@ function showToast(messaggio, tipo = 'ok') {
 async function inizializzaPWA() {
   if ('serviceWorker' in navigator) {
     try {
-      const swPath = location.pathname.includes('/avis-flotta/') ? '/avis-flotta/sw.js' : '/sw.js';
-      const reg = await navigator.serviceWorker.register(swPath, {
-        scope: location.pathname.includes('/avis-flotta/') ? '/avis-flotta/' : '/'
-      });
+      // Percorso relativo: funziona sia in root sia in sottocartella
+      // (es. /avis-flotta/) senza dipendere dal nome del repository.
+      const reg = await navigator.serviceWorker.register('./sw.js', { scope: './' });
       console.log('[SW] Registrato:', reg.scope);
 
       // Controllo aggiornamenti
