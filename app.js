@@ -203,6 +203,10 @@ async function renderRifornimenti() {
           <div class="tl-unit">${r.litri} L</div>
         </div>
       </div>
+      <div class="flex gap-8 mt-8">
+        <button class="btn btn-secondary btn-sm" onclick="openModalRifornimento(${r.id})"><i class="ti ti-edit"></i> Modifica</button>
+        <button class="btn btn-secondary btn-sm" onclick="eliminaRifornimento(${r.id})"><i class="ti ti-trash"></i></button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -247,6 +251,10 @@ async function renderManutenzioni() {
           <span class="tag tag-${m.tipo === 'ordinaria' ? 'blue' : 'warn'}" style="margin-top:4px">${m.tipo}</span>
         </div>
       </div>
+      <div class="flex gap-8 mt-8">
+        <button class="btn btn-secondary btn-sm" onclick="openModalManutenzione(${m.id})"><i class="ti ti-edit"></i> Modifica</button>
+        <button class="btn btn-secondary btn-sm" onclick="eliminaManutenzione(${m.id})"><i class="ti ti-trash"></i></button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -289,11 +297,12 @@ async function renderSegnalazioni() {
       </div>
       <div class="text-sm text-muted">${s.descrizione || ''}</div>
       <div class="text-xs text-muted mt-8">Segnalato da: ${s.segnalato || '—'}</div>
-      ${s.stato !== 'chiusa' ? `
-        <div class="flex gap-8 mt-8">
-          ${s.stato === 'aperta' ? `<button class="btn btn-secondary btn-sm" onclick="aggiornaSegnalazione(${s.id},'in_lavorazione')">Prendi in carico</button>` : ''}
-          <button class="btn btn-secondary btn-sm" onclick="aggiornaSegnalazione(${s.id},'chiusa')">Chiudi</button>
-        </div>` : ''}
+      <div class="flex gap-8 mt-8" style="flex-wrap:wrap">
+        ${s.stato === 'aperta' ? `<button class="btn btn-secondary btn-sm" onclick="aggiornaSegnalazione(${s.id},'in_lavorazione')">Prendi in carico</button>` : ''}
+        ${s.stato !== 'chiusa' ? `<button class="btn btn-secondary btn-sm" onclick="aggiornaSegnalazione(${s.id},'chiusa')">Chiudi</button>` : ''}
+        <button class="btn btn-secondary btn-sm" onclick="openModalSegnalazione(${s.id})"><i class="ti ti-edit"></i> Modifica</button>
+        ${(!window.Auth || Auth.isResponsabile()) ? `<button class="btn btn-secondary btn-sm" onclick="eliminaSegnalazione(${s.id})"><i class="ti ti-trash"></i></button>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -361,19 +370,40 @@ async function eliminaVeicolo(id) {
 }
 
 /* ── Form: Rifornimento ── */
-async function openModalRifornimento() {
+async function openModalRifornimento(id = null) {
   await popolaSelectVeicoli('r-veicoloId');
-  document.getElementById('form-rifornimento').reset();
-  document.getElementById('r-data').value = oggi();
+  const form = document.getElementById('form-rifornimento');
+  form.reset();
+  form.dataset.id = id || '';
+  document.getElementById('modal-rifornimento-title').textContent = id ? 'Modifica rifornimento' : 'Registra rifornimento';
+
+  if (id) {
+    const r = await Rifornimenti.get(id);
+    if (r) {
+      document.getElementById('r-veicoloId').value    = r.veicoloId || '';
+      document.getElementById('r-data').value          = r.data || '';
+      document.getElementById('r-km').value             = r.km || '';
+      document.getElementById('r-litri').value          = r.litri || '';
+      document.getElementById('r-costo').value          = r.costo || '';
+      document.getElementById('r-carburante').value     = r.carburante || '';
+      document.getElementById('r-distributore').value   = r.distributore || '';
+      document.getElementById('r-note').value            = r.note || '';
+    }
+  } else {
+    document.getElementById('r-data').value = oggi();
+  }
+
   openModal('modal-rifornimento');
 }
 
 async function salvaRifornimento() {
+  const form = document.getElementById('form-rifornimento');
+  const id = form.dataset.id;
   const vId = +document.getElementById('r-veicoloId').value;
   const litri = +document.getElementById('r-litri').value;
   if (!vId || !litri) { showToast('Compila i campi obbligatori', 'danger'); return; }
 
-  await Rifornimenti.add({
+  const dati = {
     veicoloId:    vId,
     data:         document.getElementById('r-data').value,
     km:           +document.getElementById('r-km').value || 0,
@@ -382,28 +412,65 @@ async function salvaRifornimento() {
     carburante:   document.getElementById('r-carburante').value,
     distributore: document.getElementById('r-distributore').value,
     note:         document.getElementById('r-note').value,
-  });
+  };
 
-  showToast('Rifornimento registrato', 'ok');
+  if (id) {
+    await Rifornimenti.update(+id, dati);
+    showToast('Rifornimento aggiornato', 'ok');
+  } else {
+    await Rifornimenti.add(dati);
+    showToast('Rifornimento registrato', 'ok');
+  }
+
   closeModal('modal-rifornimento');
   if (State.paginaCorrente === 'rifornimenti') renderRifornimenti();
   if (State.paginaCorrente === 'dashboard')    renderDashboard();
 }
 
+async function eliminaRifornimento(id) {
+  if (!confirm('Eliminare questo rifornimento?')) return;
+  await Rifornimenti.elimina(id);
+  showToast('Rifornimento eliminato', 'warn');
+  renderPagina(State.paginaCorrente);
+}
+
 /* ── Form: Manutenzione ── */
-async function openModalManutenzione() {
+async function openModalManutenzione(id = null) {
   await popolaSelectVeicoli('m-veicoloId');
-  document.getElementById('form-manutenzione').reset();
-  document.getElementById('m-data').value = oggi();
+  const form = document.getElementById('form-manutenzione');
+  form.reset();
+  form.dataset.id = id || '';
+  document.getElementById('modal-manutenzione-title').textContent = id ? 'Modifica intervento' : 'Registra intervento';
+
+  if (id) {
+    const m = await Manutenzioni.get(id);
+    if (m) {
+      document.getElementById('m-veicoloId').value          = m.veicoloId || '';
+      document.getElementById('m-tipo').value                = m.tipo || 'ordinaria';
+      document.getElementById('m-data').value                = m.data || '';
+      document.getElementById('m-km').value                  = m.km || '';
+      document.getElementById('m-descrizione').value          = m.descrizione || '';
+      document.getElementById('m-officina').value             = m.officina || '';
+      document.getElementById('m-costo').value                = m.costo || '';
+      document.getElementById('m-prossimoIntervento').value   = m.prossimoIntervento || '';
+      document.getElementById('m-prossimoKm').value           = m.prossimoKm || '';
+      document.getElementById('m-note').value                 = m.note || '';
+    }
+  } else {
+    document.getElementById('m-data').value = oggi();
+  }
+
   openModal('modal-manutenzione');
 }
 
 async function salvaManutenzione() {
+  const form = document.getElementById('form-manutenzione');
+  const id = form.dataset.id;
   const vId = +document.getElementById('m-veicoloId').value;
   const desc = document.getElementById('m-descrizione').value.trim();
   if (!vId || !desc) { showToast('Compila i campi obbligatori', 'danger'); return; }
 
-  await Manutenzioni.add({
+  const dati = {
     veicoloId:         vId,
     tipo:              document.getElementById('m-tipo').value,
     data:              document.getElementById('m-data').value,
@@ -414,29 +481,65 @@ async function salvaManutenzione() {
     prossimoIntervento:document.getElementById('m-prossimoIntervento').value,
     prossimoKm:        +document.getElementById('m-prossimoKm').value || 0,
     note:              document.getElementById('m-note').value,
-  });
+  };
 
-  showToast('Intervento registrato', 'ok');
+  if (id) {
+    await Manutenzioni.update(+id, dati);
+    showToast('Intervento aggiornato', 'ok');
+  } else {
+    await Manutenzioni.add(dati);
+    showToast('Intervento registrato', 'ok');
+  }
+
   closeModal('modal-manutenzione');
   if (State.paginaCorrente === 'manutenzioni') renderManutenzioni();
   if (State.paginaCorrente === 'dashboard')    renderDashboard();
 }
 
+async function eliminaManutenzione(id) {
+  if (!confirm('Eliminare questo intervento?')) return;
+  await Manutenzioni.elimina(id);
+  showToast('Intervento eliminato', 'warn');
+  renderPagina(State.paginaCorrente);
+}
+
 /* ── Form: Segnalazione ── */
-async function openModalSegnalazione() {
+async function openModalSegnalazione(id = null) {
   await popolaSelectVeicoli('sg-veicoloId');
-  document.getElementById('form-segnalazione').reset();
-  document.getElementById('sg-data').value = oggi();
-  // Precompila il nome con l'utente loggato
+  const form = document.getElementById('form-segnalazione');
+  form.reset();
+  form.dataset.id = id || '';
+  document.getElementById('modal-segnalazione-title').textContent = id ? 'Modifica segnalazione' : 'Nuova segnalazione';
+
   const nomeEl = document.getElementById('sg-segnalato');
-  if (nomeEl && window.Auth?.nomeUtente) {
-    nomeEl.value    = Auth.nomeUtente();
-    nomeEl.readOnly = true;
+
+  if (id) {
+    const s = await Segnalazioni.get(id);
+    if (s) {
+      document.getElementById('sg-veicoloId').value     = s.veicoloId || '';
+      document.getElementById('sg-priorita').value       = s.priorita || 'media';
+      document.getElementById('sg-titolo').value          = s.titolo || '';
+      document.getElementById('sg-descrizione').value     = s.descrizione || '';
+      document.getElementById('sg-data').value             = s.data || '';
+      if (nomeEl) { nomeEl.value = s.segnalato || ''; nomeEl.readOnly = false; }
+    }
+  } else {
+    document.getElementById('sg-data').value = oggi();
+    // Precompila il nome con l'utente loggato
+    if (nomeEl && window.Auth?.nomeUtente) {
+      nomeEl.value    = Auth.nomeUtente();
+      nomeEl.readOnly = true;
+    } else if (nomeEl) {
+      nomeEl.readOnly = false;
+    }
   }
+
   openModal('modal-segnalazione');
 }
 
 async function salvaSegnalazione() {
+  const form = document.getElementById('form-segnalazione');
+  const id = form.dataset.id;
   const vId = +document.getElementById('sg-veicoloId').value;
   const titolo = document.getElementById('sg-titolo').value.trim();
   if (!vId || !titolo) { showToast('Compila i campi obbligatori', 'danger'); return; }
@@ -444,6 +547,21 @@ async function salvaSegnalazione() {
   const priorita    = document.getElementById('sg-priorita').value;
   const descrizione = document.getElementById('sg-descrizione').value;
   const segnalato   = document.getElementById('sg-segnalato').value;
+
+  if (id) {
+    await Segnalazioni.update(+id, {
+      veicoloId: vId,
+      priorita,
+      titolo,
+      descrizione,
+      segnalato,
+      data: document.getElementById('sg-data').value,
+    });
+    showToast('Segnalazione aggiornata', 'ok');
+    closeModal('modal-segnalazione');
+    renderPagina(State.paginaCorrente);
+    return;
+  }
 
   await Segnalazioni.add({
     veicoloId: vId,
@@ -462,6 +580,13 @@ async function salvaSegnalazione() {
   const veicoli = await Veicoli.getAll();
   const v = veicoli.find(x => x.id === vId);
   inviaNotificaSegnalazione(titolo, descrizione, priorita, v);
+}
+
+async function eliminaSegnalazione(id) {
+  if (!confirm('Eliminare questa segnalazione?')) return;
+  await Segnalazioni.elimina(id);
+  showToast('Segnalazione eliminata', 'warn');
+  renderPagina(State.paginaCorrente);
 }
 
 /* ── Notifica locale per nuova segnalazione ── */

@@ -267,7 +267,7 @@
       <div class="form-row">
         <div class="form-group"><label for="v-kmAttuali">Km attuali</label><input type="number" id="v-kmAttuali" placeholder="45000"></div>
         <div class="form-group"><label for="v-carburante">Carburante</label>
-          <select id="v-carburante"><option>Diesel</option><option>Benzina</option><option>GPL</option><option>Elettrico</option><option>Ibrido</option></select>
+          <select id="v-carburante"><option>Diesel</option><option>Benzina</option><option>Benzina/Metano</option><option>GPL</option><option>Elettrico</option><option>Ibrido</option></select>
         </div>
       </div>
       <div class="form-group"><label for="v-sede">Sede assegnazione</label>
@@ -298,7 +298,7 @@
   <div class="modal">
     <div class="modal-handle"></div>
     <div class="modal-header">
-      <h2 class="modal-title">Registra rifornimento</h2>
+      <h2 class="modal-title" id="modal-rifornimento-title">Registra rifornimento</h2>
       <button class="close-btn" onclick="closeModal('modal-rifornimento')" aria-label="Chiudi"><i class="ti ti-x"></i></button>
     </div>
     <form id="form-rifornimento" onsubmit="return false">
@@ -312,7 +312,7 @@
         <div class="form-group"><label for="r-costo">Costo totale (€)</label><input type="number" step="0.01" id="r-costo" placeholder="72.24"></div>
       </div>
       <div class="form-group"><label for="r-carburante">Carburante</label>
-        <select id="r-carburante"><option>Diesel</option><option>Benzina</option><option>GPL</option><option>Elettrico (kWh)</option></select>
+        <select id="r-carburante"><option>Diesel</option><option>Benzina</option><option>Metano</option><option>GPL</option><option>Elettrico (kWh)</option></select>
       </div>
       <div class="form-group"><label for="r-distributore">Distributore</label><input type="text" id="r-distributore" placeholder="Es. Agip Brescia Nord"></div>
       <div class="form-group"><label for="r-note">Note</label><textarea id="r-note" placeholder="Note opzionali..."></textarea></div>
@@ -329,7 +329,7 @@
   <div class="modal">
     <div class="modal-handle"></div>
     <div class="modal-header">
-      <h2 class="modal-title">Registra intervento</h2>
+      <h2 class="modal-title" id="modal-manutenzione-title">Registra intervento</h2>
       <button class="close-btn" onclick="closeModal('modal-manutenzione')" aria-label="Chiudi"><i class="ti ti-x"></i></button>
     </div>
     <form id="form-manutenzione" onsubmit="return false">
@@ -365,7 +365,7 @@
   <div class="modal">
     <div class="modal-handle"></div>
     <div class="modal-header">
-      <h2 class="modal-title">Nuova segnalazione</h2>
+      <h2 class="modal-title" id="modal-segnalazione-title">Nuova segnalazione</h2>
       <button class="close-btn" onclick="closeModal('modal-segnalazione')" aria-label="Chiudi"><i class="ti ti-x"></i></button>
     </div>
     <form id="form-segnalazione" onsubmit="return false">

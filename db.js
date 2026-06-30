@@ -116,6 +116,14 @@ const Rifornimenti = {
   async getByVeicolo(veicoloId) {
     return db.rifornimenti.where('veicoloId').equals(veicoloId).reverse().sortBy('data');
   },
+  async get(id) {
+    return db.rifornimenti.get(id);
+  },
+  async update(id, dati) {
+    await db.rifornimenti.update(id, dati);
+    const r = await db.rifornimenti.get(id);
+    window.fbSyncRecord('rifornimenti', r);
+  },
   async add(dati) {
     const record = { ...dati, dataCreazione: new Date().toISOString() };
     const id = await db.rifornimenti.add(record);
@@ -151,6 +159,23 @@ const Manutenzioni = {
   },
   async getByVeicolo(veicoloId) {
     return db.manutenzioni.where('veicoloId').equals(veicoloId).reverse().sortBy('data');
+  },
+  async get(id) {
+    return db.manutenzioni.get(id);
+  },
+  async update(id, dati) {
+    await db.manutenzioni.update(id, dati);
+    const m = await db.manutenzioni.get(id);
+    if (m.tipo === 'ordinaria' && m.prossimoIntervento) {
+      await db.veicoli.update(m.veicoloId, {
+        tagliandoData: m.prossimoIntervento,
+        tagliandoKm: m.prossimoKm || undefined
+      });
+      const v = await db.veicoli.get(m.veicoloId);
+      await Scadenze.rigenera(m.veicoloId, v);
+      window.fbSyncRecord('veicoli', v);
+    }
+    window.fbSyncRecord('manutenzioni', m);
   },
   async add(dati) {
     const record = { ...dati, dataCreazione: new Date().toISOString() };
@@ -189,6 +214,14 @@ const Segnalazioni = {
   },
   async getAperte() {
     return db.segnalazioni.where('stato').equals('aperta').reverse().sortBy('data');
+  },
+  async get(id) {
+    return db.segnalazioni.get(id);
+  },
+  async update(id, dati) {
+    await db.segnalazioni.update(id, { ...dati, dataAggiornamento: new Date().toISOString() });
+    const s = await db.segnalazioni.get(id);
+    window.fbSyncRecord('segnalazioni', s);
   },
   async add(dati) {
     const record = { ...dati, stato: 'aperta', dataCreazione: new Date().toISOString() };
@@ -252,44 +285,15 @@ const DataIO = {
   }
 };
 
-/* ────────── DATI DEMO ────────── */
+/* ────────── DATI DEMO ──────────
+   Rimossi definitivamente (Giugno 2026): la flotta reale è ora censita
+   nell'app. Questa funzione resta come no-op per compatibilità con il
+   fallback di app.js (avvio senza Firebase, es. sviluppo locale) ma non
+   inserisce più alcun dato fittizio, così da escludere ogni rischio di
+   ricomparsa accidentale dei veicoli/rifornimenti/manutenzioni/segnalazioni
+   di esempio. */
 async function caricaDatiDemo() {
-  const count = await db.veicoli.count();
-  if (count > 0) return;
-
-  const oggi = new Date();
-  const fra = (g) => { const d = new Date(oggi); d.setDate(d.getDate() + g); return d.toISOString().split('T')[0]; };
-
-  const veicoli = [
-    { targa: 'BS 451 DH', modello: 'Fiat Doblò',    anno: 2020, kmAttuali: 87400,  carburante: 'Diesel',  sede: 'Brescia',        tagliandoData: fra(-30), bolloScadenza: fra(185), revisioneData: fra(200), stato: 'attivo' },
-    { targa: 'BS 312 KL', modello: 'Ford Transit',   anno: 2019, kmAttuali: 112300, carburante: 'Diesel',  sede: 'Cunettone Salò', tagliandoData: fra(73),  bolloScadenza: fra(18),  revisioneData: fra(174), stato: 'attivo' },
-    { targa: 'BS 789 FP', modello: 'Renault Kangoo', anno: 2021, kmAttuali: 54200,  carburante: 'Diesel',  sede: 'Brescia',        tagliandoData: fra(144), bolloScadenza: fra(397), revisioneData: fra(22),  stato: 'attivo' },
-    { targa: 'BS 221 MN', modello: 'VW Caddy',       anno: 2022, kmAttuali: 34100,  carburante: 'Diesel',  sede: 'Mobile',         tagliandoData: fra(226), bolloScadenza: fra(93),  revisioneData: fra(246), stato: 'attivo' },
-    { targa: 'BS 100 AX', modello: 'Fiat Fiorino',   anno: 2018, kmAttuali: 98700,  carburante: 'Benzina', sede: 'Brescia',        tagliandoData: fra(159), bolloScadenza: fra(154), revisioneData: fra(226), stato: 'attivo' },
-  ];
-
-  for (const v of veicoli) {
-    const id = await db.veicoli.add({ ...v, dataCreazione: new Date().toISOString() });
-    await Scadenze.rigenera(id, v);
-  }
-
-  await db.rifornimenti.bulkAdd([
-    { veicoloId: 1, data: fra(-2),  km: 87400,  litri: 42, costo: 72.24,  carburante: 'Diesel', distributore: 'Agip Brescia Nord', note: '', dataCreazione: new Date().toISOString() },
-    { veicoloId: 3, data: fra(-7),  km: 54200,  litri: 35, costo: 60.55,  carburante: 'Diesel', distributore: 'Eni Salò',          note: '', dataCreazione: new Date().toISOString() },
-    { veicoloId: 2, data: fra(-11), km: 112300, litri: 65, costo: 112.40, carburante: 'Diesel', distributore: 'Q8 Brescia Est',    note: 'Autista: Marco', dataCreazione: new Date().toISOString() },
-  ]);
-
-  await db.manutenzioni.bulkAdd([
-    { veicoloId: 5, tipo: 'ordinaria',     data: fra(-4),  km: 98700, descrizione: 'Cambio olio 5W30, filtro olio, filtro aria',    officina: 'Officina Rossi BS',      costo: 185, prossimoIntervento: fra(180), dataCreazione: new Date().toISOString() },
-    { veicoloId: 1, tipo: 'straordinaria', data: fra(-19), km: 87000, descrizione: 'Sostituzione ammortizzatori anteriori SX e DX', officina: 'Autofficina Bianchi BS', costo: 420, dataCreazione: new Date().toISOString() },
-  ]);
-
-  await db.segnalazioni.bulkAdd([
-    { veicoloId: 2, priorita: 'alta',  titolo: 'Spia freni accesa',  descrizione: "La spia ABS si accende a freddo all'avvio", segnalato: 'Sergio M.', data: fra(-5),  stato: 'aperta',         dataCreazione: new Date().toISOString() },
-    { veicoloId: 1, priorita: 'media', titolo: 'Rumore sospensione', descrizione: 'Rumore metallico in curva a destra',        segnalato: 'Sara C.',   data: fra(-14), stato: 'in_lavorazione', dataCreazione: new Date().toISOString() },
-  ]);
-
-  console.log('[DB] Dati demo caricati');
+  console.log('[DB] Nessun dato demo da caricare (funzione disattivata)');
 }
 
 /* ── Esponi tutto su window così app.js li trova ── */
