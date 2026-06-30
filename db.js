@@ -42,7 +42,19 @@ async function avviaListener() {
     }
   };
 
-  window.fbStartListener('veicoli',      db.veicoli,      refresh);
+  // I veicoli, quando arrivano via sync da un altro dispositivo, vengono
+  // scritti direttamente nella tabella locale senza passare da
+  // Veicoli.add/update — quindi la tabella "scadenze" (che è solo locale,
+  // non sincronizzata) non si aggiornerebbe da sola. Per questo, ad ogni
+  // cambiamento sui veicoli, ricalcoliamo tutte le scadenze da zero su
+  // questo dispositivo, eliminando anche eventuali voci orfane rimaste
+  // da veicoli ormai cancellati.
+  const refreshVeicoli = async () => {
+    await Scadenze.rigeneraTutte();
+    refresh();
+  };
+
+  window.fbStartListener('veicoli',      db.veicoli,      refreshVeicoli);
   window.fbStartListener('rifornimenti', db.rifornimenti, refresh);
   window.fbStartListener('manutenzioni', db.manutenzioni, refresh);
   window.fbStartListener('segnalazioni', db.segnalazioni, refresh);
@@ -82,6 +94,15 @@ const Veicoli = {
     window.fbSyncRecord('veicoli', v);
   },
   async elimina(id) {
+    // Raccoglie gli id dei record figli PRIMA della cancellazione locale,
+    // così da poterli rimuovere anche su Firestore (dove la cancellazione
+    // del solo veicolo lascerebbe rifornimenti/manutenzioni/segnalazioni
+    // orfani sugli altri dispositivi). Le scadenze sono solo locali e non
+    // vanno toccate sul cloud.
+    const rifIds  = (await db.rifornimenti.where('veicoloId').equals(id).primaryKeys());
+    const mantIds = (await db.manutenzioni.where('veicoloId').equals(id).primaryKeys());
+    const segnIds = (await db.segnalazioni.where('veicoloId').equals(id).primaryKeys());
+
     await db.transaction('rw', db.veicoli, db.rifornimenti, db.manutenzioni, db.segnalazioni, db.scadenze, async () => {
       await db.veicoli.delete(id);
       await db.rifornimenti.where('veicoloId').equals(id).delete();
@@ -89,7 +110,12 @@ const Veicoli = {
       await db.segnalazioni.where('veicoloId').equals(id).delete();
       await db.scadenze.where('veicoloId').equals(id).delete();
     });
+
+    // Cancellazione a cascata su Firestore
     window.fbDeleteRecord('veicoli', id);
+    for (const rid of rifIds)  window.fbDeleteRecord('rifornimenti', rid);
+    for (const mid of mantIds) window.fbDeleteRecord('manutenzioni', mid);
+    for (const sid of segnIds) window.fbDeleteRecord('segnalazioni', sid);
   },
   async getConScadenze() {
     const veicoli = await this.getAll();
@@ -250,6 +276,20 @@ const Scadenze = {
     if (veicolo.revisioneData)  scad.push({ veicoloId, tipo: 'revisione',     dataScadenza: veicolo.revisioneData, descrizione: 'Revisione periodica' });
     if (veicolo.assicurazione)  scad.push({ veicoloId, tipo: 'assicurazione', dataScadenza: veicolo.assicurazione, descrizione: 'Assicurazione RCA' });
     if (scad.length) await db.scadenze.bulkAdd(scad);
+  },
+  async rigeneraTutte() {
+    const veicoli = await db.veicoli.toArray();
+    const idsValidi = veicoli.map(v => v.id);
+
+    // Rimuove eventuali scadenze rimaste "orfane" (di veicoli non più esistenti
+    // su questo dispositivo, es. veicoli demo o cancellati su un altro device)
+    const tutte = await db.scadenze.toArray();
+    const orfane = tutte.filter(s => !idsValidi.includes(s.veicoloId));
+    if (orfane.length) await db.scadenze.bulkDelete(orfane.map(s => s.id));
+
+    for (const v of veicoli) {
+      await this.rigenera(v.id, v);
+    }
   },
   async prossime(giorni = 60) {
     const limite = new Date();
