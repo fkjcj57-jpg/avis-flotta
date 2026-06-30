@@ -1,10 +1,10 @@
-/* AVIS Flotta — Service Worker v2 */
+﻿/* AVIS Flotta — Service Worker v2 */
 
 /* IMPORTANTE: ad ogni modifica di index.html / app.js / db.js / style.css
    incrementa il numero di versione qui sotto (es. v2 → v3).
    È questo cambiamento che fa rilevare l'aggiornamento al browser e
    forza il ri-download dei file freschi, eliminando la cache vecchia. */
-const CACHE_NAME = 'avis-flotta-v2';
+const CACHE_NAME = 'avis-flotta-v3';
 
 /* Percorsi RELATIVI: l'app è ospitata in sottocartella su GitHub Pages
    (es. /avis-flotta/), quindi i percorsi assoluti dalla radice romperebbero
